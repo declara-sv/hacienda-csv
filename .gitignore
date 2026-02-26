@@ -1,0 +1,17 @@
+# Node
+node_modules/
+.pnpm-store/
+
+# Frontend builds
+apps/web/dist/
+apps/web/.tanstack/
+
+# .NET
+**/bin/
+**/obj/
+
+# Local data
+apps/api/Accounting.Api/App_Data/
+
+# OS
+.DS_Store

@@ -1,0 +1,38 @@
+export const messages = {
+  es: {
+    appName: 'HaciendaCSV',
+    appSubtitle: 'Gestor fiscal para contadores en El Salvador',
+    menuClients: 'Clientes',
+    menuLogin: 'Ingresar',
+    menuRegister: 'Crear cuenta',
+    logout: 'Cerrar sesión',
+    loading: 'Cargando...',
+    authTitleLogin: 'Iniciar sesión',
+    authTitleRegister: 'Crear cuenta',
+    authEmail: 'Correo electrónico',
+    authPassword: 'Contraseña',
+    authFullName: 'Nombre completo',
+    authSubmitLogin: 'Ingresar al panel',
+    authSubmitRegister: 'Crear y continuar',
+    authToRegister: '¿No tienes cuenta? Regístrate',
+    authToLogin: '¿Ya tienes cuenta? Inicia sesión',
+    clientsTitle: 'Clientes',
+    clientsEmpty: 'Aún no tienes clientes registrados.',
+    createClient: 'Agregar cliente',
+    clientName: 'Nombre del cliente',
+    clientTaxId: 'NIT / NRC',
+    clientNotes: 'Notas',
+    save: 'Guardar',
+    upload: 'Subir archivo',
+    filingPeriods: 'Períodos fiscales',
+    uploads: 'Cargas',
+    statusPending: 'Pendiente',
+    statusRunning: 'Procesando',
+    statusFailed: 'Fallido',
+    statusCompleted: 'Completado',
+    downloadCsv: 'Descargar CSV',
+  },
+} as const
+
+export type Locale = keyof typeof messages
+export type MessageKey = keyof (typeof messages)['es']
