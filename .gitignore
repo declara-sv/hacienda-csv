@@ -12,6 +12,10 @@ apps/web/.tanstack/
 
 # Local data
 apps/api/Accounting.Api/App_Data/
+apps/api/Accounting.Api/.env
+apps/web/.env
+supabase/.temp/
+supabase/.branches/
 
 # OS
 .DS_Store
