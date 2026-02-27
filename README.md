@@ -119,6 +119,17 @@ Flujo actual:
 - API: Google Cloud Run con GitHub Actions (`.github/workflows/deploy-api-cloud-run.yml`).
 - DB: Supabase/Neon PostgreSQL (reemplaza `ConnectionStrings__Postgres`).
 
+### Vercel (frontend) para evitar 404
+
+Configura el proyecto en Vercel así:
+1. **Root Directory**: `apps/web`
+2. **Build Command**: `pnpm build`
+3. **Install Command**: `pnpm install`
+4. **Output Directory**: vacío (no usar `dist`, TanStack Start + Nitro genera SSR)
+
+Variables de entorno:
+1. `VITE_API_URL=<URL pública del API en Cloud Run>`
+
 ### GitHub Actions para Cloud Run
 
 El workflow despliega automáticamente cuando hay cambios en `apps/api/**` sobre `main`.
