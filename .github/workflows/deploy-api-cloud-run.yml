@@ -97,6 +97,7 @@ jobs:
             --allow-unauthenticated \
             --set-env-vars "ASPNETCORE_URLS=http://+:8080" \
             --set-env-vars "ASPNETCORE_ENVIRONMENT=Production" \
+            --set-env-vars "Features__EnableSwagger=true" \
             --set-env-vars "ConnectionStrings__Postgres=${{ secrets.API_CONNECTION_STRING_POSTGRES }}" \
             --set-env-vars "Jwt__Issuer=Accounting.Api" \
             --set-env-vars "Jwt__Audience=Accounting.Web" \

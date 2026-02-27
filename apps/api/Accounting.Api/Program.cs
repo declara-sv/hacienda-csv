@@ -85,7 +85,8 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
 }
 
-if (app.Environment.IsDevelopment())
+var enableSwagger = app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Features:EnableSwagger");
+if (enableSwagger)
 {
     app.UseSwagger();
     app.UseSwaggerUI();
@@ -94,6 +95,14 @@ if (app.Environment.IsDevelopment())
 app.UseCors("web");
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapGet("/", () => Results.Ok(new
+{
+    service = "Accounting.Api",
+    status = "ok",
+    environment = app.Environment.EnvironmentName,
+}));
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.MapControllers();
 
