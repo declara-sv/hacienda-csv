@@ -1,0 +1,114 @@
+name: Deploy API to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/api/**'
+      - '.github/workflows/deploy-api-cloud-run.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-api-cloud-run-main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
+      CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+      API_STORAGE_PROVIDER: ${{ vars.API_STORAGE_PROVIDER }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required repo vars and secrets
+        env:
+          SEC_GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          SEC_GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          SEC_API_CONNECTION_STRING_POSTGRES: ${{ secrets.API_CONNECTION_STRING_POSTGRES }}
+          SEC_API_JWT_SIGNING_KEY: ${{ secrets.API_JWT_SIGNING_KEY }}
+        run: |
+          missing=0
+
+          for var in GCP_PROJECT_ID GCP_REGION GAR_REPOSITORY CLOUD_RUN_SERVICE; do
+            if [ -z "${!var}" ]; then
+              echo "Missing repository variable: $var"
+              missing=1
+            fi
+          done
+
+          [ -z "$SEC_GCP_WORKLOAD_IDENTITY_PROVIDER" ] && echo "Missing repository secret: GCP_WORKLOAD_IDENTITY_PROVIDER" && missing=1
+          [ -z "$SEC_GCP_SERVICE_ACCOUNT" ] && echo "Missing repository secret: GCP_SERVICE_ACCOUNT" && missing=1
+          [ -z "$SEC_API_CONNECTION_STRING_POSTGRES" ] && echo "Missing repository secret: API_CONNECTION_STRING_POSTGRES" && missing=1
+          [ -z "$SEC_API_JWT_SIGNING_KEY" ] && echo "Missing repository secret: API_JWT_SIGNING_KEY" && missing=1
+
+          if [ "$missing" -eq 1 ]; then
+            echo "Required configuration is incomplete."
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push API image
+        id: build
+        run: |
+          IMAGE_URI="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/accounting-api:${GITHUB_SHA}"
+          docker build \
+            -f apps/api/Accounting.Api/Dockerfile \
+            -t "${IMAGE_URI}" \
+            apps/api/Accounting.Api
+          docker push "${IMAGE_URI}"
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Cloud Run
+        run: |
+          STORAGE_PROVIDER="${API_STORAGE_PROVIDER:-Local}"
+
+          gcloud run deploy "${CLOUD_RUN_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --platform managed \
+            --image "${{ steps.build.outputs.image_uri }}" \
+            --port 8080 \
+            --allow-unauthenticated \
+            --set-env-vars "ASPNETCORE_URLS=http://+:8080" \
+            --set-env-vars "ASPNETCORE_ENVIRONMENT=Production" \
+            --set-env-vars "ConnectionStrings__Postgres=${{ secrets.API_CONNECTION_STRING_POSTGRES }}" \
+            --set-env-vars "Jwt__Issuer=Accounting.Api" \
+            --set-env-vars "Jwt__Audience=Accounting.Web" \
+            --set-env-vars "Jwt__SigningKey=${{ secrets.API_JWT_SIGNING_KEY }}" \
+            --set-env-vars "Jwt__AccessTokenMinutes=20" \
+            --set-env-vars "Jwt__RefreshTokenDays=30" \
+            --set-env-vars "Storage__Provider=${STORAGE_PROVIDER}" \
+            --set-env-vars "Storage__UploadContainer=uploads" \
+            --set-env-vars "Storage__OutputContainer=outputs" \
+            --set-env-vars "Storage__AzureBlobConnectionString=${{ secrets.API_STORAGE_AZURE_BLOB_CONNECTION_STRING }}"
+
+      - name: Show Cloud Run URL
+        run: |
+          URL=$(gcloud run services describe "${CLOUD_RUN_SERVICE}" \
+            --project "${GCP_PROJECT_ID}" \
+            --region "${GCP_REGION}" \
+            --format='value(status.url)')
+          echo "Cloud Run URL: ${URL}"

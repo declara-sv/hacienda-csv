@@ -116,5 +116,29 @@ Flujo actual:
 ## Despliegue
 
 - Frontend: Vercel (proyecto `apps/web`, build command `pnpm build`).
-- API: Azure Container Apps usando `apps/api/Accounting.Api/Dockerfile`.
-- DB dev: Neon PostgreSQL free tier (reemplaza `ConnectionStrings__Postgres`).
+- API: Google Cloud Run con GitHub Actions (`.github/workflows/deploy-api-cloud-run.yml`).
+- DB: Supabase/Neon PostgreSQL (reemplaza `ConnectionStrings__Postgres`).
+
+### GitHub Actions para Cloud Run
+
+El workflow despliega automáticamente cuando hay cambios en `apps/api/**` sobre `main`.
+
+Variables de repositorio (GitHub > Settings > Secrets and variables > Actions > Variables):
+- `GCP_PROJECT_ID`
+- `GCP_REGION` (ejemplo: `us-east1`)
+- `GAR_REPOSITORY` (Artifact Registry repo)
+- `CLOUD_RUN_SERVICE` (nombre del servicio Cloud Run)
+- `API_STORAGE_PROVIDER` (opcional, `AzureBlob` recomendado; fallback `Local`)
+
+Secrets de repositorio:
+- `GCP_WORKLOAD_IDENTITY_PROVIDER`
+- `GCP_SERVICE_ACCOUNT`
+- `API_CONNECTION_STRING_POSTGRES`
+- `API_JWT_SIGNING_KEY`
+- `API_STORAGE_AZURE_BLOB_CONNECTION_STRING` (opcional si `Storage__Provider=Local`)
+
+Requisitos GCP previos:
+1. Artifact Registry (Docker) creado en la misma región.
+2. Cloud Run API habilitada.
+3. Service Account con permisos para Cloud Run deploy + Artifact Registry push.
+4. Workload Identity Federation configurado para GitHub OIDC.
