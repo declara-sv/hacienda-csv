@@ -63,11 +63,38 @@ builder.Services.AddCors(options =>
     {
         var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ??
             ["http://localhost:3000", "http://localhost:5173"];
+        var allowVercelSubdomains = builder.Configuration.GetValue("Cors:AllowVercelSubdomains", true);
 
-        policy.WithOrigins(allowedOrigins)
-            .AllowAnyMethod()
+        var allowedOriginSet = new HashSet<string>(allowedOrigins, StringComparer.OrdinalIgnoreCase);
+
+        policy.AllowAnyMethod()
             .AllowAnyHeader()
-            .AllowCredentials();
+            .AllowCredentials()
+            .SetIsOriginAllowed(origin =>
+            {
+                if (string.IsNullOrWhiteSpace(origin))
+                {
+                    return false;
+                }
+
+                if (allowedOriginSet.Contains(origin))
+                {
+                    return true;
+                }
+
+                if (!allowVercelSubdomains)
+                {
+                    return false;
+                }
+
+                if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                {
+                    return false;
+                }
+
+                return uri.Scheme == Uri.UriSchemeHttps &&
+                       uri.Host.EndsWith(".vercel.app", StringComparison.OrdinalIgnoreCase);
+            });
     });
 });
 
