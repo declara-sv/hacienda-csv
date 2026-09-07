@@ -1,0 +1,9 @@
+self-hosted-runner:
+  labels:
+    - blacksmith-2vcpu-ubuntu-2404
+# GitHub supports queue:max, but actionlint 1.7.12 predates the schema addition.
+# Remove only this exception when actionlint supports concurrency.queue.
+paths:
+  .github/workflows/deploy-api.yml:
+    ignore:
+      - '^unexpected key "queue" for "concurrency" section\.'

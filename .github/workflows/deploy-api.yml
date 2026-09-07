@@ -1,0 +1,183 @@
+name: Deploy API
+run-name: Deploy API ${{ inputs.tag || github.ref_name }}
+
+on:
+  push:
+    tags: ['api-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing released tag to redeploy (api-vMAJOR.MINOR.PATCH); no build or migrations'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  deploy:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY }}
+      CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+      CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT: ${{ vars.CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT }}
+      API_STORAGE_PROVIDER: ${{ vars.API_STORAGE_PROVIDER }}
+
+    steps:
+      - name: Validate release tag
+        id: release
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^api-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || [ "${#RELEASE_TAG}" -gt 128 ]; then
+            echo 'Expected a stable release tag: api-vMAJOR.MINOR.PATCH (maximum 128 characters).'
+            exit 1
+          fi
+          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
+      # An explicit tag ref also rejects nonexistent tags and branch-name collisions.
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ steps.release.outputs.tag }}
+          persist-credentials: false
+
+      - name: Validate required repo vars and WIF secrets
+        id: validate
+        env:
+          SEC_GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          SEC_GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        run: |
+          missing=0
+          for var in GCP_PROJECT_ID GCP_REGION GAR_REPOSITORY CLOUD_RUN_SERVICE SEC_GCP_WORKLOAD_IDENTITY_PROVIDER SEC_GCP_SERVICE_ACCOUNT; do
+            if [ -z "${!var}" ]; then
+              echo "Missing configuration: $var"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - name: Setup gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Validate Secret Manager versions (metadata only)
+        run: |
+          for secret in api-connection-string-postgres api-jwt-signing-key api-storage-azure-blob-connection-string; do
+            STATE=$(gcloud secrets versions describe latest --secret "$secret" --project "$GCP_PROJECT_ID" --format='value(state)')
+            if [ "$STATE" != ENABLED ]; then
+              echo "Secret has no enabled latest version: $secret"
+              exit 1
+            fi
+          done
+
+      - name: Set image tag
+        id: target
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          echo "uri=${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/accounting-api:${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure Docker auth
+        id: docker-auth
+        if: github.event_name == 'push'
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+      - name: Setup cached Docker builder
+        id: builder
+        if: github.event_name == 'push'
+        uses: useblacksmith/setup-docker-builder@v2
+        with:
+          cache-key: ${{ github.repository }}/accounting-api
+      - name: Build and push release image
+        id: build
+        if: github.event_name == 'push'
+        uses: useblacksmith/build-push-action@v2
+        with:
+          context: apps/api/Accounting.Api
+          file: apps/api/Accounting.Api/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.target.outputs.uri }}
+
+      # Dispatch is deploy-only: a missing image fails rather than rebuilding old code.
+      - name: Resolve existing image digest
+        id: image
+        env:
+          IMAGE_TAG: ${{ steps.target.outputs.uri }}
+        run: |
+          DIGEST=$(gcloud artifacts docker images describe "$IMAGE_TAG" --project "$GCP_PROJECT_ID" --format='value(image_summary.digest)')
+          if [[ ! "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo 'Expected an existing Artifact Registry image with a SHA-256 digest.'
+            exit 1
+          fi
+          echo "uri=${IMAGE_TAG%:*}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup .NET
+        id: dotnet
+        if: github.event_name == 'push'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build migration bundle
+        id: bundle
+        if: github.event_name == 'push'
+        working-directory: apps/api/Accounting.Api
+        run: |
+          dotnet tool restore
+          dotnet ef migrations bundle --self-contained -r linux-x64 -o efbundle
+      - name: Apply migrations
+        id: migrate
+        if: github.event_name == 'push'
+        working-directory: apps/api/Accounting.Api
+        env:
+          CONNECTION_STRING: ${{ secrets.API_CONNECTION_STRING_POSTGRES }}
+        run: |
+          if [ -z "$CONNECTION_STRING" ]; then
+            echo 'Missing repository secret: API_CONNECTION_STRING_POSTGRES'
+            exit 1
+          fi
+          ./efbundle --connection "$CONNECTION_STRING"
+
+      # Default success() gating is intentional: never deploy after a failed migration.
+      - name: Deploy to Cloud Run
+        id: deploy
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+        run: |
+          STORAGE_PROVIDER="${API_STORAGE_PROVIDER:-Local}"
+          RUNTIME_SA="${CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT:-cloud-run-runtime@${GCP_PROJECT_ID}.iam.gserviceaccount.com}"
+          gcloud run deploy "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --platform managed \
+            --image "$IMAGE_URI" \
+            --port 8080 \
+            --service-account "$RUNTIME_SA" \
+            --allow-unauthenticated \
+            --set-env-vars "ASPNETCORE_URLS=http://+:8080,ASPNETCORE_ENVIRONMENT=Production,Features__EnableSwagger=false,Jwt__Issuer=Accounting.Api,Jwt__Audience=Accounting.Web,Jwt__AccessTokenMinutes=20,Jwt__RefreshTokenDays=30,Storage__Provider=${STORAGE_PROVIDER},Storage__UploadContainer=uploads,Storage__OutputContainer=outputs" \
+            --set-secrets "ConnectionStrings__Postgres=api-connection-string-postgres:latest,Jwt__SigningKey=api-jwt-signing-key:latest,Storage__AzureBlobConnectionString=api-storage-azure-blob-connection-string:latest" \
+            --quiet
+
+      - name: Show Cloud Run URL
+        run: |
+          gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+            --format='value(status.url)'

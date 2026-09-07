@@ -118,7 +118,7 @@ Flujo actual:
 ## Despliegue
 
 - Frontend: Vercel (proyecto `apps/web`, build command `pnpm build`).
-- API: Google Cloud Run con GitHub Actions (`.github/workflows/deploy-api-cloud-run.yml`).
+- API: Google Cloud Run con GitHub Actions (`.github/workflows/deploy-api.yml`).
 - DB: Supabase/Neon PostgreSQL (reemplaza `ConnectionStrings__Postgres`).
 
 ### Vercel (frontend) para evitar 404
@@ -132,26 +132,124 @@ Configura el proyecto en Vercel así:
 Variables de entorno:
 1. `VITE_API_URL=<URL pública del API en Cloud Run>`
 
-### GitHub Actions para Cloud Run
+### CI y releases del API
 
-El workflow despliega automáticamente cuando hay cambios en `apps/api/**` sobre `main`.
+`ci-api.yml` ejecuta restore, build con `-warnaserror`, los tests de integración
+(Testcontainers/Postgres) y los contratos de los workflows en pushes de ramas y PRs.
+Un push a `main` **no despliega** el API. El frontend sigue con push-to-deploy en Vercel.
+Todos los jobs del API usan `blacksmith-2vcpu-ubuntu-2404`.
 
-Variables de repositorio (GitHub > Settings > Secrets and variables > Actions > Variables):
+#### Configuración inicial (antes del primer tag)
+
+1. Instalar la app de Blacksmith en la organización/repositorio y habilitar el runner.
+2. Mantener Artifact Registry y Cloud Run habilitados en GCP. La cuenta de despliegue
+   usada por WIF necesita permisos de push/lectura en Artifact Registry, deploy de
+   Cloud Run (incluido acceso público) y `iam.serviceAccounts.actAs` sobre la cuenta runtime.
+3. Permitir en WIF los refs `refs/tags/api-v*` del repositorio, además de `refs/heads/main`
+   para dispatch. Si la condición actual está limitada a `main`, los tags no autenticarán.
+   Restringir siempre al repositorio confiable; proteger los tags `api-v*` contra cambios/borrado.
+4. Crear los tres secretos siguientes en Secret Manager en `GCP_PROJECT_ID`, con una
+   versión `latest` habilitada. Otorgar `roles/secretmanager.secretAccessor` a la cuenta
+   **runtime** sobre cada secreto. La cuenta **de despliegue** necesita
+   `roles/secretmanager.viewer` sobre ellos para validar metadatos; el workflow no lee payloads.
+
+   | Variable en Cloud Run | Nombre del secreto |
+   |---|---|
+   | `ConnectionStrings__Postgres` | `api-connection-string-postgres` |
+   | `Jwt__SigningKey` | `api-jwt-signing-key` |
+   | `Storage__AzureBlobConnectionString` | `api-storage-azure-blob-connection-string` |
+
+   Los tres son obligatorios, incluso con storage Local. Para Local puede usarse un
+   valor no vacío de marcador en el secreto Azure (no se consume). AzureBlob es recomendado:
+   el filesystem de Cloud Run es efímero. `latest` se resuelve al arrancar cada instancia;
+   una rotación aplica también a nuevos arranques de revisiones anteriores.
+5. Copiar la **misma conexión a la misma base** a `API_CONNECTION_STRING_POSTGRES` en
+   GitHub Secrets: solo la usa el paso de migración, fuera de Cloud Run. Postgres debe
+   ser alcanzable desde Blacksmith y la conexión debe tener permisos DDL y TLS según
+   el proveedor. No imprimir valores ni pasarlos como expresiones inline de shell.
+6. Migrar la configuración anterior: el nuevo deploy reemplaza el conjunto de env vars
+   ordinarias y de secretos, quitando los tres valores plaintext de la nueva revisión.
+   Las revisiones antiguas conservan su configuración: revisar su retención y rotar
+   credenciales según corresponda. Los secretos GitHub `API_JWT_SIGNING_KEY` y
+   `API_STORAGE_AZURE_BLOB_CONNECTION_STRING` ya no son usados por este workflow.
+
+Variables de repositorio (Settings > Secrets and variables > Actions > Variables):
 - `GCP_PROJECT_ID`
 - `GCP_REGION` (ejemplo: `us-east1`)
-- `GAR_REPOSITORY` (Artifact Registry repo)
-- `CLOUD_RUN_SERVICE` (nombre del servicio Cloud Run)
-- `API_STORAGE_PROVIDER` (opcional, `AzureBlob` recomendado; fallback `Local`)
+- `GAR_REPOSITORY`
+- `CLOUD_RUN_SERVICE`
+- `CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT` (opcional; default `cloud-run-runtime@PROJECT_ID.iam.gserviceaccount.com`)
+- `API_STORAGE_PROVIDER` (opcional, `AzureBlob` recomendado; default `Local`)
 
 Secrets de repositorio:
 - `GCP_WORKLOAD_IDENTITY_PROVIDER`
 - `GCP_SERVICE_ACCOUNT`
-- `API_CONNECTION_STRING_POSTGRES`
-- `API_JWT_SIGNING_KEY`
-- `API_STORAGE_AZURE_BLOB_CONNECTION_STRING` (opcional si `Storage__Provider=Local`)
+- `API_CONNECTION_STRING_POSTGRES` (solo releases nuevos; no requerido para rollback)
 
-Requisitos GCP previos:
-1. Artifact Registry (Docker) creado en la misma región.
-2. Cloud Run API habilitada.
-3. Service Account con permisos para Cloud Run deploy + Artifact Registry push.
-4. Workload Identity Federation configurado para GitHub OIDC.
+#### Publicar
+
+Primero integrar estos workflows a `main` y completar la configuración externa.
+Comprobar que **API CI está verde en el commit exacto** antes de crear el tag; esta
+comprobación es procedural, no un gate automático del workflow de deploy.
+
+```bash
+git checkout main && git pull --ff-only
+git tag api-v1.0.0
+git push origin api-v1.0.0
+```
+
+Solo se aceptan tags estables `api-vMAJOR.MINOR.PATCH`, sin ceros iniciales, prerelease
+ni metadata. Patch para fixes, minor para endpoints nuevos, major para cambios incompatibles.
+No mover ni reutilizar tags publicados. Conservar sus imágenes en Artifact Registry.
+
+El workflow valida tag/configuración, construye la imagen Linux amd64 con cache de
+Blacksmith, crea un bundle EF autocontenido Linux x64, aplica migraciones y despliega
+por digest. Swagger está deshabilitado en producción. Un fallo de migración impide el
+nuevo deploy: la revisión anterior continúa sirviendo, aunque cambios de esquema ya
+aplicados pueden permanecer. Las migraciones deben ser compatibles con la revisión viva
+(estrategia expand/contract). No hay downgrade automático de esquema.
+
+Los releases se serializan con `cancel-in-progress: false` y `queue: max` (hasta 100
+pendientes). FIFO corresponde a la llegada a la cola, no garantiza orden de push de tags;
+para releases dependientes, esperar la finalización del anterior.
+
+#### Reintentar y rollback
+
+- Si un release falla al migrar o desplegar: corregir la causa y **re-ejecutar el workflow
+  original del push** para repetir migraciones pendientes antes de desplegar. No usar
+  dispatch para saltarse una migración fallida. No editar/recrear el tag; cambios de código
+  requieren un tag nuevo.
+- Rollback: Actions > Deploy API > Run workflow, seleccionar **main** como ref del
+  workflow e indicar el tag anterior que se desplegó con éxito. Por CLI:
+
+  ```bash
+  gh workflow run deploy-api.yml --ref main -f tag=api-v1.0.0
+  ```
+
+  Dispatch comprueba que el tag y su imagen existan, y despliega el digest existente:
+  **no construye ni ejecuta migraciones**. Una imagen inexistente aborta el workflow.
+  Usar únicamente releases que ya migraron con éxito. El rollback de aplicación conserva
+  el esquema actual y las referencias `latest` a secretos: verificar compatibilidad.
+  Un rollback de esquema requiere una migración nueva y un tag nuevo.
+
+#### Verificación local
+
+```bash
+dotnet restore apps/api/Accounting.slnx
+dotnet build apps/api/Accounting.slnx --no-restore -warnaserror
+dotnet test apps/api/Accounting.Api.Tests --no-build
+python3 -m venv /tmp/hacienda-workflow-tests
+/tmp/hacienda-workflow-tests/bin/pip install -r .github/tests/requirements.txt
+/tmp/hacienda-workflow-tests/bin/python -m unittest discover -s .github/tests -v
+actionlint
+git diff --check
+```
+
+`actionlint` 1.7.12 no reconoce aún `concurrency.queue`: `.github/actionlint.yaml`
+ignora únicamente ese diagnóstico en deploy; los tests comprueban su valor `max`.
+No se suprimen advertencias de .NET ni auditorías NuGet.
+
+Referencias: [Blacksmith builder](https://github.com/useblacksmith/setup-docker-builder),
+[concurrencia de GitHub](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency),
+[bundles EF](https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/applying#bundles),
+[opciones de Cloud Run](https://docs.cloud.google.com/sdk/gcloud/reference/run/deploy).
