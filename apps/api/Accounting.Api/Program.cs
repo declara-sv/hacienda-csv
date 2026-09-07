@@ -105,6 +105,7 @@ builder.Services
     });
 
 builder.Services.AddScoped<Accounting.Api.Features.Uploads.UploadsService>();
+builder.Services.AddScoped<Accounting.Api.Features.Generation.GenerationRunsService>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
