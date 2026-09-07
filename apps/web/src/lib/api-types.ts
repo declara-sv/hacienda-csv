@@ -1,4 +1,5 @@
-export type ParseJobStatus = 'Pending' | 'Running' | 'Failed' | 'Completed'
+export type GenerationRunStatus = 'Pending' | 'Running' | 'Completed' | 'Failed'
+export type GenerationRunFileStatus = 'Pending' | 'Included' | 'Failed'
 
 export type AuthUser = {
   id: string
@@ -55,13 +56,24 @@ export type Artifact = {
   sizeBytes: number
 }
 
-export type ParseJob = {
+export type GenerationRunFile = {
+  uploadId: string | null
+  originalFileName: string
+  sourceFileKind: 'Excel' | 'PDF'
+  status: GenerationRunFileStatus
+  errorMessage: string | null
+}
+
+export type GenerationRun = {
   id: string
-  status: ParseJobStatus
+  filingPeriodId: string
+  version: number
+  status: GenerationRunStatus
   errorMessage: string | null
   createdAtUtc: string
   startedAtUtc: string | null
   completedAtUtc: string | null
+  files: GenerationRunFile[]
   artifacts: Artifact[]
 }
 
@@ -73,11 +85,5 @@ export type Upload = {
   contentType: string
   sizeBytes: number
   createdAtUtc: string
-  jobs: ParseJob[]
-}
-
-export type UploadCreated = {
-  uploadId: string
-  parseJobId: string
-  status: ParseJobStatus
+  includedInLatestRun: boolean
 }

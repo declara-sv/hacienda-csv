@@ -1,52 +1,63 @@
 import type {
-  ParseJob,
-  ParseJobStatus,
-  Upload,
-  UploadCreated,
+  GenerationRun,
+  GenerationRunFile,
+  GenerationRunFileStatus,
+  GenerationRunStatus,
 } from './api-types'
 
-/*
-  The API serializes the ParseJobStatus enum as a number
-  (Pending = 1, Running = 2, Failed = 3, Completed = 4). Older responses and
-  fixtures may use the string names. Normalize both to the string union the
-  UI works with.
-*/
-const byNumber: Record<number, ParseJobStatus> = {
-  1: 'Pending',
-  2: 'Running',
-  3: 'Failed',
-  4: 'Completed',
-}
+// Enum values match GenerationRunStatus and GenerationRunFileStatus in the API.
+const runStatuses: GenerationRunStatus[] = [
+  'Pending',
+  'Running',
+  'Completed',
+  'Failed',
+]
+const fileStatuses: GenerationRunFileStatus[] = [
+  'Pending',
+  'Included',
+  'Failed',
+]
 
-const byName: Record<string, ParseJobStatus> = {
-  pending: 'Pending',
-  running: 'Running',
-  failed: 'Failed',
-  completed: 'Completed',
-}
-
-export function normalizeJobStatus(value: unknown): ParseJobStatus {
-  if (typeof value === 'number') {
-    return byNumber[value] ?? 'Pending'
+function normalizeStatus<T extends string>(
+  value: unknown,
+  statuses: T[],
+  label: string,
+): T {
+  const match = statuses.find((status, index) =>
+    typeof value === 'number'
+      ? value === index + 1
+      : typeof value === 'string' &&
+        (value.toLowerCase() === status.toLowerCase() ||
+          value === String(index + 1)),
+  )
+  if (!match) {
+    throw new Error(`Unknown generation ${label} status: ${String(value)}`)
   }
-  if (typeof value === 'string') {
-    const asNumber = Number(value)
-    if (!Number.isNaN(asNumber) && value.trim() !== '') {
-      return byNumber[asNumber] ?? 'Pending'
-    }
-    return byName[value.toLowerCase()] ?? 'Pending'
+  return match
+}
+
+export function normalizeRunStatus(value: unknown): GenerationRunStatus {
+  return normalizeStatus(value, runStatuses, 'run')
+}
+
+export function normalizeRunFileStatus(
+  value: unknown,
+): GenerationRunFileStatus {
+  return normalizeStatus(value, fileStatuses, 'file')
+}
+
+type RawGenerationRun = Omit<GenerationRun, 'status' | 'files'> & {
+  status: unknown
+  files: Array<Omit<GenerationRunFile, 'status'> & { status: unknown }>
+}
+
+export function normalizeRun(run: RawGenerationRun): GenerationRun {
+  return {
+    ...run,
+    status: normalizeRunStatus(run.status),
+    files: run.files.map((file) => ({
+      ...file,
+      status: normalizeRunFileStatus(file.status),
+    })),
   }
-  return 'Pending'
-}
-
-export function normalizeJob(job: ParseJob): ParseJob {
-  return { ...job, status: normalizeJobStatus(job.status) }
-}
-
-export function normalizeUpload(upload: Upload): Upload {
-  return { ...upload, jobs: upload.jobs.map(normalizeJob) }
-}
-
-export function normalizeUploadCreated(created: UploadCreated): UploadCreated {
-  return { ...created, status: normalizeJobStatus(created.status) }
 }
