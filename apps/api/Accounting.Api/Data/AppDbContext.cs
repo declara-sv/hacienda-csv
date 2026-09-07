@@ -12,7 +12,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ClientConfig> ClientConfigs => Set<ClientConfig>();
     public DbSet<FilingPeriod> FilingPeriods => Set<FilingPeriod>();
     public DbSet<Upload> Uploads => Set<Upload>();
-    public DbSet<ParseJob> ParseJobs => Set<ParseJob>();
+    public DbSet<GenerationRun> GenerationRuns => Set<GenerationRun>();
+    public DbSet<GenerationRunFile> GenerationRunFiles => Set<GenerationRunFile>();
     public DbSet<OutputArtifact> OutputArtifacts => Set<OutputArtifact>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -108,23 +109,63 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
-        modelBuilder.Entity<ParseJob>(entity =>
+        modelBuilder.Entity<GenerationRun>(entity =>
         {
-            entity.ToTable("parse_jobs");
+            entity.ToTable("generation_runs");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.Version).IsRequired();
             entity.Property(x => x.Status)
                 .HasConversion(
                     value => value.ToString(),
-                    value => Enum.Parse<ParseJobStatus>(value))
+                    value => Enum.Parse<GenerationRunStatus>(value))
                 .HasMaxLength(20)
                 .IsRequired();
             entity.Property(x => x.ErrorMessage).HasMaxLength(2000);
+
+            entity.HasIndex(x => new { x.FilingPeriodId, x.Version }).IsUnique();
+            entity.HasIndex(x => x.FilingPeriodId)
+                .IsUnique()
+                .HasDatabaseName("IX_generation_runs_active_per_period")
+                .HasFilter("\"Status\" IN ('Pending', 'Running')");
             entity.HasIndex(x => new { x.Status, x.CreatedAtUtc });
 
-            entity.HasOne(x => x.Upload)
-                .WithMany(x => x.ParseJobs)
-                .HasForeignKey(x => x.UploadId)
+            entity.HasOne(x => x.Client)
+                .WithMany()
+                .HasForeignKey(x => x.ClientId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.FilingPeriod)
+                .WithMany(x => x.GenerationRuns)
+                .HasForeignKey(x => x.FilingPeriodId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.RequestedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.RequestedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<GenerationRunFile>(entity =>
+        {
+            entity.ToTable("generation_run_files");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.OriginalFileName).HasMaxLength(260).IsRequired();
+            entity.Property(x => x.SourceFileKind).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Status)
+                .HasConversion(
+                    value => value.ToString(),
+                    value => Enum.Parse<GenerationRunFileStatus>(value))
+                .HasMaxLength(20)
+                .IsRequired();
+            entity.Property(x => x.ErrorMessage).HasMaxLength(2000);
+            entity.HasIndex(x => new { x.GenerationRunId, x.UploadId }).IsUnique();
+
+            entity.HasOne(x => x.GenerationRun)
+                .WithMany(x => x.Files)
+                .HasForeignKey(x => x.GenerationRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Upload)
+                .WithMany(x => x.RunFiles)
+                .HasForeignKey(x => x.UploadId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<OutputArtifact>(entity =>
@@ -138,9 +179,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.StorageContainer).HasMaxLength(80).IsRequired();
             entity.Property(x => x.StoragePath).HasMaxLength(500).IsRequired();
 
-            entity.HasOne(x => x.ParseJob)
+            entity.HasOne(x => x.GenerationRun)
                 .WithMany(x => x.OutputArtifacts)
-                .HasForeignKey(x => x.ParseJobId)
+                .HasForeignKey(x => x.GenerationRunId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.Client)
                 .WithMany()

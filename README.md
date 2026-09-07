@@ -63,7 +63,8 @@ docker compose up -d
 ```bash
 cd apps/api/Accounting.Api
 export PATH="/Users/kelvin/.dotnet10:$PATH" # si instalaste dotnet 10 local
-# La migración ya existe; al iniciar, la API aplica migrations automáticamente
+# Aplicar migraciones (la API ya no las aplica al iniciar)
+dotnet ef database update
 dotnet run
 ```
 
@@ -88,7 +89,8 @@ pnpm dev
 
 ```bash
 cd apps/api/Accounting.Api
-export PATH="/Users/kelvin/.dotnet10:$PATH:$HOME/.dotnet/tools"
+# dotnet-ef está instalado como herramienta local (apps/api/.config/dotnet-tools.json)
+dotnet tool restore
 dotnet ef migrations add <NombreMigracion>
 dotnet ef database update
 ```

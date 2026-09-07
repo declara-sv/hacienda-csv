@@ -1,9 +1,9 @@
 namespace Accounting.Api.Domain.Enums;
 
-public enum ParseJobStatus
+public enum GenerationRunStatus
 {
     Pending = 1,
     Running = 2,
-    Failed = 3,
-    Completed = 4,
+    Completed = 3,
+    Failed = 4,
 }

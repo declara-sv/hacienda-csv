@@ -11,4 +11,5 @@ public sealed class FilingPeriod
     public Client Client { get; set; } = null!;
     public ICollection<Upload> Uploads { get; set; } = new List<Upload>();
     public ICollection<OutputArtifact> OutputArtifacts { get; set; } = new List<OutputArtifact>();
+    public ICollection<GenerationRun> GenerationRuns { get; set; } = new List<GenerationRun>();
 }

@@ -12,4 +12,6 @@ public interface IFileStorage
         CancellationToken cancellationToken = default);
 
     Task<Stream?> OpenReadAsync(StoredFileReference file, CancellationToken cancellationToken = default);
+
+    Task DeleteAsync(StoredFileReference file, CancellationToken cancellationToken = default);
 }

@@ -20,5 +20,5 @@ public sealed class Upload
     public Client Client { get; set; } = null!;
     public FilingPeriod FilingPeriod { get; set; } = null!;
     public AppUser UploadedByUser { get; set; } = null!;
-    public ICollection<ParseJob> ParseJobs { get; set; } = new List<ParseJob>();
+    public ICollection<GenerationRunFile> RunFiles { get; set; } = new List<GenerationRunFile>();
 }

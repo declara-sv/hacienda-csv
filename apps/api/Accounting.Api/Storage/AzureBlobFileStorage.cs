@@ -54,4 +54,15 @@ public sealed class AzureBlobFileStorage(IOptions<StorageOptions> options) : IFi
         var response = await blobClient.DownloadStreamingAsync(cancellationToken: cancellationToken);
         return response.Value.Content;
     }
+
+    public async Task DeleteAsync(StoredFileReference file, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.AzureBlobConnectionString))
+        {
+            throw new InvalidOperationException("Storage:AzureBlobConnectionString no está configurado.");
+        }
+
+        var client = new BlobContainerClient(_options.AzureBlobConnectionString, file.Container);
+        await client.GetBlobClient(file.Path).DeleteIfExistsAsync(cancellationToken: cancellationToken);
+    }
 }

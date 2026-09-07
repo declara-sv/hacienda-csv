@@ -4,7 +4,6 @@ using Accounting.Api.Configuration;
 using Accounting.Api.Data;
 using Accounting.Api.Domain.Entities;
 using Accounting.Api.Storage;
-using Accounting.Api.Workers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +15,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection(StorageOptions.SectionName));
+
+builder.Services.AddOptions<Accounting.Api.Features.Generation.GenerationOptions>()
+    .Bind(builder.Configuration.GetSection(Accounting.Api.Features.Generation.GenerationOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("ConnectionStrings:Postgres es requerido.");
@@ -98,19 +102,29 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddControllers();
-builder.Services.AddHostedService<ParsePipelineWorker>();
+builder.Services
+    .AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
+
+builder.Services.AddScoped<Accounting.Api.Features.Uploads.UploadsService>();
+builder.Services.AddScoped<Accounting.Api.Features.Generation.GenerationRunsService>();
+builder.Services.AddScoped<Accounting.Api.Features.Generation.GenerationRunProcessor>();
+builder.Services.AddSingleton<Accounting.Api.Features.Generation.ICsvGenerator, Accounting.Api.Features.Generation.PlaceholderCsvGenerator>();
+builder.Services.AddHostedService<Accounting.Api.Features.Generation.GenerationWorker>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddProblemDetails();
+
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
-}
+app.UseCors("web");
+app.UseExceptionHandler();
+app.UseStatusCodePages();
 
 var enableSwagger = app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Features:EnableSwagger");
 if (enableSwagger)
@@ -119,7 +133,6 @@ if (enableSwagger)
     app.UseSwaggerUI();
 }
 
-app.UseCors("web");
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -134,3 +147,5 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapControllers();
 
 app.Run();
+
+public partial class Program;
