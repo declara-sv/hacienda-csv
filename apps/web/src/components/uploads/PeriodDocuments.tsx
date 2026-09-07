@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { GenerationHistory } from './GenerationHistory'
-import { MultiFileUpload } from './MultiFileUpload'
+import { fileInputId, MultiFileUpload } from './MultiFileUpload'
 import { Button } from '#/components/ui/Button'
 import { EmptyState } from '#/components/ui/EmptyState'
 import { Notice } from '#/components/ui/Notice'
@@ -33,8 +33,11 @@ const messageOf = (error: unknown, fallback: string) =>
 
 const deleteTriggerId = (uploadId: string) => `delete-${uploadId}`
 const confirmDeleteId = (uploadId: string) => `confirm-delete-${uploadId}`
-const focusById = (id: string) =>
-  document.getElementById(id)?.focus({ preventScroll: true })
+const focusById = (id: string) => {
+  const target = document.getElementById(id)
+  target?.focus({ preventScroll: true })
+  return target !== null && document.activeElement === target
+}
 
 /**
  * Documents and generation runs of one filing period. Mount with a period key:
@@ -134,15 +137,31 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
     if (uploadId) focusById(deleteTriggerId(uploadId))
   }, [confirmingDeleteId])
 
+  // A deleted row only unmounts once the refetched list arrives, so focus has
+  // to wait for that commit too. Candidates are tried in order: the neighbour
+  // row that took its place, then the file picker when nothing is left.
+  const focusAfterDelete = useRef<readonly string[] | null>(null)
+  useEffect(() => {
+    const candidates = focusAfterDelete.current
+    if (!candidates) return
+    focusAfterDelete.current = null
+    for (const id of candidates) if (focusById(id)) return
+  }, [uploads])
+
   const refetchAll = () => {
     void queryClient.invalidateQueries({ queryKey: uploadsKey })
     void queryClient.invalidateQueries({ queryKey: runsKey })
   }
 
-  const onMutationError = (error: unknown, fallback: MessageKey) => {
+  const onMutationError = (
+    error: unknown,
+    fallback: MessageKey,
+    refetchOn: readonly number[] = [409],
+  ) => {
     setMutationError(messageOf(error, t(fallback)))
-    // Another session changed the period; both snapshots are stale.
-    if (error instanceof ApiError && error.status === 409) refetchAll()
+    // The server rejected our view of the period; both snapshots are stale.
+    if (error instanceof ApiError && refetchOn.includes(error.status))
+      refetchAll()
   }
 
   const createRunMutation = useMutation({
@@ -156,14 +175,24 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
       ])
       void queryClient.invalidateQueries({ queryKey: runsKey })
     },
-    onError: (error) => onMutationError(error, 'generateError'),
+    // A rejected generation (400) is as stale a view as a conflict (409):
+    // the documents or the run history moved under us.
+    onError: (error) => onMutationError(error, 'generateError', [400, 409]),
   })
 
   const deleteUploadMutation = useMutation({
     mutationFn: (uploadId: string) =>
       uploadsApi.remove(clientId, periodId, uploadId),
     onMutate: () => setMutationError(null),
-    onSuccess: () => {
+    onSuccess: (_data, uploadId) => {
+      // The row that takes the deleted one's place, or the last one left.
+      const index = uploads.findIndex((item) => item.id === uploadId)
+      const survivors = uploads.filter((item) => item.id !== uploadId)
+      const neighbour = survivors.at(Math.min(index, survivors.length - 1))
+      focusAfterDelete.current = [
+        ...(neighbour ? [deleteTriggerId(neighbour.id)] : []),
+        fileInputId,
+      ]
       void queryClient.invalidateQueries({ queryKey: uploadsKey })
     },
     onError: (error) => onMutationError(error, 'documentDeleteError'),
@@ -394,7 +423,10 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
             aria-describedby={
               generateBlockedReason ? 'generate-blocked' : undefined
             }
-            onClick={() => createRunMutation.mutate()}
+            onClick={() => {
+              // Guard the same tick: the disabled state lands one render later.
+              if (!createRunMutation.isPending) createRunMutation.mutate()
+            }}
           >
             {t('generateCsv')}
           </Button>

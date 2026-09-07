@@ -160,11 +160,13 @@ describe('PeriodDocuments', () => {
     expect(rows).toHaveLength(2)
     expect(within(rows[0]).getByText('u1.xlsx')).toBeTruthy()
     expect(
-      within(rows[0]).getByText('Incluido en la última generación'),
+      within(rows[0]).getByText('Forma parte de la última versión completada'),
     ).toBeTruthy()
     expect(within(rows[1]).getByText('escaneo.pdf')).toBeTruthy()
     expect(
-      within(rows[1]).getByText('No incluido en la última generación'),
+      within(rows[1]).getByText(
+        'No forma parte de la última versión completada',
+      ),
     ).toBeTruthy()
     expect(within(rows[0]).getByText(/2 KB/)).toBeTruthy()
     // No per-upload processing status survives from the removed jobs model.
@@ -318,6 +320,9 @@ describe('PeriodDocuments', () => {
     fireEvent.click(button('Sí, eliminar'))
     fireEvent.click(button('Eliminar u2.xlsx'))
     expect(removeUpload).not.toHaveBeenCalled()
+    // A second activation while the POST is inflight must not start a run.
+    fireEvent.click(button('Generando'))
+    await waitFor(() => expect(createRun).toHaveBeenCalledTimes(1))
   })
 
   it('blocks generation while a document deletion is still pending', async () => {
@@ -342,10 +347,10 @@ describe('PeriodDocuments', () => {
     expect(createRun).not.toHaveBeenCalled()
   })
 
-  it('surfaces a rejected generation without refetching, and dismisses it', async () => {
+  it('refetches the period after a rejected generation, and dismisses it', async () => {
     listUploads.mockResolvedValue([upload('u1')])
     createRun.mockRejectedValue(
-      new ApiError(400, 'El período no tiene configuración activa.', null),
+      new ApiError(400, 'El período no tiene archivos para generar.', null),
     )
     setup()
 
@@ -353,14 +358,15 @@ describe('PeriodDocuments', () => {
     await waitFor(() => expect(generateButton().disabled).toBe(false))
     fireEvent.click(generateButton())
 
-    await screen.findByText('El período no tiene configuración activa.')
-    expect(listUploads).toHaveBeenCalledTimes(1)
-    expect(listRuns).toHaveBeenCalledTimes(1)
+    await screen.findByText('El período no tiene archivos para generar.')
+    // The server rejected our snapshot of the period; both lists are stale.
+    await waitFor(() => expect(listUploads).toHaveBeenCalledTimes(2))
+    expect(listRuns).toHaveBeenCalledTimes(2)
     expect(generateButton().disabled).toBe(false)
 
     fireEvent.click(button('Cerrar aviso'))
     expect(
-      screen.queryByText('El período no tiene configuración activa.'),
+      screen.queryByText('El período no tiene archivos para generar.'),
     ).toBeNull()
   })
 
@@ -455,6 +461,51 @@ describe('PeriodDocuments', () => {
     expect(document.activeElement).toBe(button('Eliminar u1.xlsx'))
   })
 
+  it('moves focus to the next document once a deletion removes the row', async () => {
+    listUploads.mockResolvedValue([upload('u1'), upload('u2')])
+    removeUpload.mockResolvedValue(undefined)
+    setup()
+
+    await screen.findByText('u1.xlsx')
+    fireEvent.click(button('Eliminar u1.xlsx'))
+    listUploads.mockResolvedValue([upload('u2')])
+    fireEvent.click(button('Sí, eliminar'))
+
+    // The deleted row unmounts on refetch; focus must land on a survivor.
+    await waitFor(() => expect(screen.queryByText('u1.xlsx')).toBeNull())
+    expect(document.activeElement).toBe(button('Eliminar u2.xlsx'))
+  })
+
+  it('falls back to the previous document when the last row is deleted', async () => {
+    listUploads.mockResolvedValue([upload('u1'), upload('u2')])
+    removeUpload.mockResolvedValue(undefined)
+    setup()
+
+    await screen.findByText('u2.xlsx')
+    fireEvent.click(button('Eliminar u2.xlsx'))
+    listUploads.mockResolvedValue([upload('u1')])
+    fireEvent.click(button('Sí, eliminar'))
+
+    await waitFor(() => expect(screen.queryByText('u2.xlsx')).toBeNull())
+    expect(document.activeElement).toBe(button('Eliminar u1.xlsx'))
+  })
+
+  it('moves focus to the file picker when the last document is deleted', async () => {
+    listUploads.mockResolvedValue([upload('u1')])
+    removeUpload.mockResolvedValue(undefined)
+    setup()
+
+    await screen.findByText('u1.xlsx')
+    fireEvent.click(button('Eliminar u1.xlsx'))
+    listUploads.mockResolvedValue([])
+    fireEvent.click(button('Sí, eliminar'))
+
+    await screen.findByText('Todavía no hay documentos en este período.')
+    expect(document.activeElement).toBe(
+      screen.getByLabelText('Seleccionar archivos'),
+    )
+  })
+
   it('disables deletion only for documents referenced by an active run', async () => {
     listUploads.mockResolvedValue([upload('u1'), upload('u2')])
     listRuns.mockResolvedValue([
@@ -522,6 +573,8 @@ describe('PeriodDocuments', () => {
 
     await screen.findByText('El documento está en uso por una generación.')
     expect(screen.getByText('u1.xlsx')).toBeTruthy()
+    // The row survives a failed delete, so the keyboard stays on its trigger.
+    expect(document.activeElement).toBe(button('Eliminar u1.xlsx'))
     await waitFor(() => expect(listUploads).toHaveBeenCalledTimes(2))
     expect(listRuns).toHaveBeenCalledTimes(2)
   })
@@ -533,7 +586,9 @@ describe('PeriodDocuments', () => {
     setup()
     await tick()
 
-    expect(screen.getByText('No incluido en la última generación')).toBeTruthy()
+    expect(
+      screen.getByText('No forma parte de la última versión completada'),
+    ).toBeTruthy()
     expect(listRuns).toHaveBeenCalledTimes(1)
     expect(listUploads).toHaveBeenCalledTimes(1)
 
@@ -546,7 +601,9 @@ describe('PeriodDocuments', () => {
 
     expect(listRuns).toHaveBeenCalledTimes(2)
     expect(listUploads).toHaveBeenCalledTimes(2)
-    expect(screen.getByText('Incluido en la última generación')).toBeTruthy()
+    expect(
+      screen.getByText('Forma parte de la última versión completada'),
+    ).toBeTruthy()
 
     // Terminal runs stop polling and stop invalidating documents.
     await tick(15000)

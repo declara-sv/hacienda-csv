@@ -85,11 +85,12 @@ describe('MultiFileUpload', () => {
     setup({ onQueueStateChange })
     select(file('bad.csv'), file('empty.pdf', ''))
     expect(screen.getAllByRole('alert')).toHaveLength(2)
-    expect(
-      screen.getByRole<HTMLButtonElement>('button', {
-        name: 'Subir archivos',
-      }).disabled,
-    ).toBe(true)
+    const submitButton = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Subir archivos',
+    })
+    expect(submitButton.disabled).toBe(true)
+    // An idle action must not advertise aria-busy="false".
+    expect(submitButton.getAttribute('aria-busy')).toBeNull()
     expect(onQueueStateChange).toHaveBeenLastCalledWith({
       pendingCount: 2,
       busy: false,

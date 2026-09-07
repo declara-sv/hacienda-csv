@@ -7,6 +7,8 @@ import { detectSourceFileKind, formatBytes } from '#/lib/format'
 import type { SourceFileKind } from '#/lib/format'
 
 export type UploadQueueState = { pendingCount: number; busy: boolean }
+/** Focus target of last resort when the document list becomes empty. */
+export const fileInputId = 'period-file-input'
 type Props = {
   clientId: string
   periodId: string
@@ -131,6 +133,7 @@ export function MultiFileUpload({
   return (
     <div className="space-y-4">
       <input
+        id={fileInputId}
         ref={inputRef}
         type="file"
         multiple
@@ -220,7 +223,7 @@ export function MultiFileUpload({
       ) : null}
       <Button
         disabled={locked || !queue.some((entry) => entry.state === 'queued')}
-        aria-busy={busy}
+        aria-busy={busy || undefined}
         onClick={() =>
           void upload(queue.filter((entry) => entry.state === 'queued'))
         }
