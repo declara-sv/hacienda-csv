@@ -19,3 +19,6 @@ supabase/.branches/
 
 # OS
 .DS_Store
+
+# Python workflow tests
+__pycache__/

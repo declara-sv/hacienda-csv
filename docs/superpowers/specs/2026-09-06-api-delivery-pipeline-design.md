@@ -92,3 +92,19 @@ Re-run `deploy-api.yml` by dispatch with the previous tag. The image already exi
 - Tag releases for the web.
 - Rate limiting, CORS tightening, refresh-token reuse detection.
 - Staging environment.
+
+## Implementation notes (2026-09-06)
+
+- Generation-runs/startup migration removal arrived on `origin/main` via PR #2 before this work.
+- Delivery implementation plan: `docs/plans/2026-09-06-api-delivery-pipeline.md`.
+- User approved minimal CI dependency repairs: explicit OpenAPI 2.7.5 (security patch)
+  and EF Relational 10.0.3 (runtime dependency must flow beyond private Design assets).
+- Release phases are sequential steps in one Blacksmith job. Manual dispatch is
+  deploy-only and must target a previously successful release; an existing image
+  alone does not prove migrations completed. Rerun the original tag-push run to
+  recover failed migrations rather than using dispatch.
+- Concurrency includes `queue: max`; `cancel-in-progress: false` alone replaces
+  older pending runs. FIFO is queue-arrival order, not guaranteed tag-push order.
+- Secret names are fixed as above; validation checks enabled latest-version metadata
+  without fetching payloads. Deploy identity needs Secret Manager viewer; runtime
+  identity needs secretAccessor. See README for one-time setup and release operations.
