@@ -122,6 +122,7 @@ builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 
+app.UseCors("web");
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
@@ -132,7 +133,6 @@ if (enableSwagger)
     app.UseSwaggerUI();
 }
 
-app.UseCors("web");
 app.UseAuthentication();
 app.UseAuthorization();
 

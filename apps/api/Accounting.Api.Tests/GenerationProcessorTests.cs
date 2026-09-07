@@ -3,9 +3,12 @@ using Accounting.Api.Data;
 using Accounting.Api.Domain.Enums;
 using Accounting.Api.Features.Generation;
 using Accounting.Api.Features.Uploads;
+using Accounting.Api.Storage;
 using Accounting.Api.Tests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Accounting.Api.Tests;
 
@@ -18,7 +21,7 @@ public sealed class GenerationProcessorTests(PostgresFixture fixture)
     {
         var client = await fixture.Factory.RegisterAndLoginAsync();
         var clientId = await client.CreateClientAsync();
-        var periodId = await client.CreatePeriodAsync(clientId, 2026, Random.Shared.Next(1, 13));
+        var periodId = await client.CreatePeriodAsync(clientId, 2026, 1);
         foreach (var name in fileNames)
         {
             (await client.UploadFileAsync(clientId, periodId, name)).EnsureSuccessStatusCode();
@@ -168,6 +171,64 @@ public sealed class GenerationProcessorTests(PostgresFixture fixture)
         var second = await CreateRunAsync(client, clientId, periodId);
         Assert.Equal(2, second.Version);
         Assert.Equal(2, second.Files.Count);
+    }
+
+    private sealed class ThrowingFileStorage(IFileStorage inner, string throwOnPathSubstring) : IFileStorage
+    {
+        public string ProviderName => inner.ProviderName;
+
+        public Task<StoredFileReference> SaveAsync(
+            string container,
+            string path,
+            Stream content,
+            string contentType,
+            CancellationToken cancellationToken = default)
+            => inner.SaveAsync(container, path, content, contentType, cancellationToken);
+
+        public Task<Stream?> OpenReadAsync(StoredFileReference file, CancellationToken cancellationToken = default)
+        {
+            if (file.Path.Contains(throwOnPathSubstring, StringComparison.Ordinal))
+            {
+                throw new IOException("Fallo simulado de almacenamiento.");
+            }
+
+            return inner.OpenReadAsync(file, cancellationToken);
+        }
+
+        public Task DeleteAsync(StoredFileReference file, CancellationToken cancellationToken = default)
+            => inner.DeleteAsync(file, cancellationToken);
+    }
+
+    [Fact]
+    public async Task Storage_exception_on_one_file_marks_it_failed_and_run_completes()
+    {
+        var (client, clientId, periodId) = await SetupPeriodWithFilesAsync("a.pdf", "b.pdf");
+        var run = await CreateRunAsync(client, clientId, periodId);
+
+        await using var scope = fixture.Factory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var failing = await db.Uploads.SingleAsync(u => u.FilingPeriodId == periodId && u.OriginalFileName == "b.pdf");
+
+        var innerStorage = scope.ServiceProvider.GetRequiredService<IFileStorage>();
+        var throwingStorage = new ThrowingFileStorage(innerStorage, failing.StoragePath);
+
+        var processor = new GenerationRunProcessor(
+            db,
+            throwingStorage,
+            scope.ServiceProvider.GetRequiredService<ICsvGenerator>(),
+            scope.ServiceProvider.GetRequiredService<IOptions<StorageOptions>>(),
+            scope.ServiceProvider.GetRequiredService<IOptions<GenerationOptions>>(),
+            scope.ServiceProvider.GetRequiredService<ILogger<GenerationRunProcessor>>());
+
+        await processor.ProcessAsync(run.Id, CancellationToken.None);
+
+        var after = await (await client.GetAsync($"{RunsUrl(clientId, periodId)}/{run.Id}")).ReadAsAsync<GenerationRunDto>();
+        Assert.Equal(GenerationRunStatus.Completed, after.Status);
+
+        var failed = Assert.Single(after.Files, f => f.Status == GenerationRunFileStatus.Failed);
+        Assert.Contains("Error al leer", failed.ErrorMessage);
+        Assert.Single(after.Files, f => f.Status == GenerationRunFileStatus.Included);
+        Assert.Single(after.Artifacts);
     }
 
     [Fact]

@@ -32,6 +32,7 @@ public sealed class SmokeTests(PostgresFixture fixture)
         var response = await client.GetAsync($"/api/clients/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
     }
 
     [Fact]

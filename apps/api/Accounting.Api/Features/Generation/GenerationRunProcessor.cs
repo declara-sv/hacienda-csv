@@ -94,7 +94,23 @@ public sealed class GenerationRunProcessor(
                 }
 
                 var reference = new StoredFileReference(file.Upload.StorageProvider, file.Upload.StorageContainer, file.Upload.StoragePath);
-                var probe = await fileStorage.OpenReadAsync(reference, cancellationToken);
+                Stream? probe;
+                try
+                {
+                    probe = await fileStorage.OpenReadAsync(reference, cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    var message = $"Error al leer el archivo: {ex.Message}";
+                    file.Status = GenerationRunFileStatus.Failed;
+                    file.ErrorMessage = message.Length > 2000 ? message[..2000] : message;
+                    continue;
+                }
+
                 if (probe is null)
                 {
                     file.Status = GenerationRunFileStatus.Failed;

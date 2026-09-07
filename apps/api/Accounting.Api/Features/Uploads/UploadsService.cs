@@ -37,6 +37,7 @@ public sealed class UploadsService(
             .AsNoTracking()
             .Where(x => x.ClientId == clientId && x.FilingPeriodId == filingPeriodId)
             .OrderByDescending(x => x.CreatedAtUtc)
+            .ThenByDescending(x => x.Id)
             .ToListAsync(cancellationToken);
 
         return uploads.Select(x => ToDto(x, included.Contains(x.Id))).ToList();

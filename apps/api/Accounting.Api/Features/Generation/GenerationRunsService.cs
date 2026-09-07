@@ -130,6 +130,7 @@ public sealed class GenerationRunsService(AppDbContext dbContext)
             .ToList(),
         run.OutputArtifacts
             .OrderByDescending(a => a.CreatedAtUtc)
+            .ThenByDescending(a => a.Id)
             .Select(a => new OutputArtifactDto(a.Id, a.ArtifactKind, a.FileName, a.CreatedAtUtc, a.SizeBytes))
             .ToList());
 }
