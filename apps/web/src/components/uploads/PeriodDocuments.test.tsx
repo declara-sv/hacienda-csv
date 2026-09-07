@@ -437,6 +437,24 @@ describe('PeriodDocuments', () => {
     expect(removeUpload).not.toHaveBeenCalled()
   })
 
+  it('keeps keyboard focus on the delete confirmation and restores it on cancel', async () => {
+    listUploads.mockResolvedValue([upload('u1'), upload('u2')])
+    setup()
+
+    await screen.findByText('u1.xlsx')
+    const trigger = button('Eliminar u1.xlsx')
+    trigger.focus()
+    fireEvent.click(trigger)
+
+    // The trigger unmounts when the confirmation opens; without an explicit
+    // move, focus falls back to <body> and keyboard users lose their place.
+    expect(document.activeElement).toBe(button('Sí, eliminar'))
+
+    fireEvent.click(button('Cancelar'))
+
+    expect(document.activeElement).toBe(button('Eliminar u1.xlsx'))
+  })
+
   it('disables deletion only for documents referenced by an active run', async () => {
     listUploads.mockResolvedValue([upload('u1'), upload('u2')])
     listRuns.mockResolvedValue([

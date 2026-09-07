@@ -31,6 +31,11 @@ const isActive = (run: GenerationRun) =>
 const messageOf = (error: unknown, fallback: string) =>
   error instanceof ApiError ? error.message : fallback
 
+const deleteTriggerId = (uploadId: string) => `delete-${uploadId}`
+const confirmDeleteId = (uploadId: string) => `confirm-delete-${uploadId}`
+const focusById = (id: string) =>
+  document.getElementById(id)?.focus({ preventScroll: true })
+
 /**
  * Documents and generation runs of one filing period. Mount with a period key:
  * the local upload queue and mutation notices must not survive navigation.
@@ -114,6 +119,21 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
     void queryClient.invalidateQueries({ queryKey: uploadsKey })
   }, [runsQuery.isSuccess, latestCompletedRunId, queryClient, uploadsKey])
 
+  // The delete trigger unmounts when its inline confirmation opens (and the
+  // confirmation unmounts when it closes), so focus can only be moved once the
+  // replacement exists. Without this, the browser drops focus on <body> and
+  // keyboard users lose their place in the document list.
+  const restoreFocusUploadId = useRef<string | null>(null)
+  useEffect(() => {
+    if (confirmingDeleteId) {
+      focusById(confirmDeleteId(confirmingDeleteId))
+      return
+    }
+    const uploadId = restoreFocusUploadId.current
+    restoreFocusUploadId.current = null
+    if (uploadId) focusById(deleteTriggerId(uploadId))
+  }, [confirmingDeleteId])
+
   const refetchAll = () => {
     void queryClient.invalidateQueries({ queryKey: uploadsKey })
     void queryClient.invalidateQueries({ queryKey: runsKey })
@@ -147,7 +167,11 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
       void queryClient.invalidateQueries({ queryKey: uploadsKey })
     },
     onError: (error) => onMutationError(error, 'documentDeleteError'),
-    onSettled: () => setConfirmingDeleteId(null),
+    onSettled: (_data, error, uploadId) => {
+      // A failed delete leaves the row in place; keep the keyboard there.
+      if (error) restoreFocusUploadId.current = uploadId
+      setConfirmingDeleteId(null)
+    },
   })
 
   const downloadMutation = useMutation({
@@ -315,6 +339,7 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
                         {t('documentDeleteQuestion')}
                       </span>
                       <Button
+                        id={confirmDeleteId(upload.id)}
                         variant="secondary"
                         size="sm"
                         loading={deleting}
@@ -327,13 +352,17 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
                         variant="ghost"
                         size="sm"
                         disabled={deleting}
-                        onClick={() => setConfirmingDeleteId(null)}
+                        onClick={() => {
+                          restoreFocusUploadId.current = upload.id
+                          setConfirmingDeleteId(null)
+                        }}
                       >
                         {t('cancel')}
                       </Button>
                     </div>
                   ) : (
                     <Button
+                      id={deleteTriggerId(upload.id)}
                       variant="ghost"
                       size="sm"
                       icon={<Trash2 className="size-4" strokeWidth={2} />}
