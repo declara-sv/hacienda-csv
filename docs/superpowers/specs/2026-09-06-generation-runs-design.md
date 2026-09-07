@@ -121,15 +121,15 @@ A single statement claims a run atomically:
 
 ```sql
 UPDATE generation_runs
-SET status = 'Running', started_at_utc = now() AT TIME ZONE 'utc'
-WHERE id = (
-  SELECT id FROM generation_runs
-  WHERE status = 'Pending'
-  ORDER BY created_at_utc
+SET "Status" = 'Running', "StartedAtUtc" = now()
+WHERE "Id" = (
+  SELECT "Id" FROM generation_runs
+  WHERE "Status" = 'Pending'
+  ORDER BY "CreatedAtUtc"
   LIMIT 1
   FOR UPDATE SKIP LOCKED
 )
-RETURNING id;
+RETURNING "Id";
 ```
 
 Two instances cannot claim the same run. When nothing is returned the worker sleeps for the poll interval (default 3 seconds).
