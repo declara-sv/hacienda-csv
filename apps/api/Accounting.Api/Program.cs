@@ -16,6 +16,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection(StorageOptions.SectionName));
 
+builder.Services.AddOptions<Accounting.Api.Features.Generation.GenerationOptions>()
+    .Bind(builder.Configuration.GetSection(Accounting.Api.Features.Generation.GenerationOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("ConnectionStrings:Postgres es requerido.");
 
@@ -106,6 +111,9 @@ builder.Services
 
 builder.Services.AddScoped<Accounting.Api.Features.Uploads.UploadsService>();
 builder.Services.AddScoped<Accounting.Api.Features.Generation.GenerationRunsService>();
+builder.Services.AddScoped<Accounting.Api.Features.Generation.GenerationRunProcessor>();
+builder.Services.AddSingleton<Accounting.Api.Features.Generation.ICsvGenerator, Accounting.Api.Features.Generation.PlaceholderCsvGenerator>();
+builder.Services.AddHostedService<Accounting.Api.Features.Generation.GenerationWorker>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
