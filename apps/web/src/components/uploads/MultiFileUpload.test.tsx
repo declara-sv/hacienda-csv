@@ -11,9 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MultiFileUpload } from './MultiFileUpload'
 import { I18nProvider } from '#/i18n/I18nProvider'
 import { ApiError, uploadsApi } from '#/lib/api-client'
+import type * as ApiClient from '#/lib/api-client'
 
 vi.mock('#/lib/api-client', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('#/lib/api-client')>()),
+  ...(await importOriginal<typeof ApiClient>()),
   uploadsApi: { create: vi.fn() },
 }))
 const create = vi.mocked(uploadsApi.create)
