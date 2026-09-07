@@ -4,7 +4,6 @@ using Accounting.Api.Configuration;
 using Accounting.Api.Data;
 using Accounting.Api.Domain.Entities;
 using Accounting.Api.Storage;
-using Accounting.Api.Workers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -99,7 +98,6 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddControllers();
-builder.Services.AddHostedService<ParsePipelineWorker>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
