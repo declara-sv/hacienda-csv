@@ -131,6 +131,19 @@ export const messages = {
     downloading: 'Descargando',
     downloadError: 'No se pudo descargar el archivo.',
 
+    generationsEmpty: 'Todavía no has generado un CSV.',
+    generationsEmptyBody:
+      'Sube los documentos del período y genera el CSV cuando estén listos.',
+    generationVersion: 'Versión {version}',
+    generationLatestCompleted: 'Último CSV generado',
+    generationCreated: 'Creada {date}',
+    generationStarted: 'Iniciada {date}',
+    generationCompleted: 'Finalizada {date}',
+    generationFiles: 'Archivos de esta versión ({count})',
+    generationFileIncluded: 'Incluido',
+    generationPartialFailure:
+      '{count} archivo(s) no se incluyeron en este CSV. Revisa los errores de esta versión.',
+
     statusPending: 'Pendiente',
     statusRunning: 'Procesando',
     statusFailed: 'Fallido',
