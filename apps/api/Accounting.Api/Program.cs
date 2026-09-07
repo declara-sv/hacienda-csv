@@ -118,13 +118,12 @@ builder.Services.AddHostedService<Accounting.Api.Features.Generation.GenerationW
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddProblemDetails();
+
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
-}
+app.UseExceptionHandler();
+app.UseStatusCodePages();
 
 var enableSwagger = app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Features:EnableSwagger");
 if (enableSwagger)

@@ -24,4 +24,30 @@ public sealed class SmokeTests(PostgresFixture fixture)
         Assert.NotEqual(Guid.Empty, clientId);
         Assert.NotEqual(Guid.Empty, periodId);
     }
+
+    [Fact]
+    public async Task Unknown_route_under_api_returns_problem_details_shape_for_404()
+    {
+        var client = await fixture.Factory.RegisterAndLoginAsync();
+        var response = await client.GetAsync($"/api/clients/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Startup_does_not_run_migrations()
+    {
+        var source = await File.ReadAllTextAsync(Path.Combine(FindRepoRoot(), "apps", "api", "Accounting.Api", "Program.cs"));
+        Assert.DoesNotContain("Database.Migrate()", source);
+    }
+
+    private static string FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "README.md")))
+        {
+            dir = dir.Parent;
+        }
+        return dir?.FullName ?? throw new InvalidOperationException("No se encontró la raíz del repo.");
+    }
 }
