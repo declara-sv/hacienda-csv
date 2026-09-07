@@ -16,7 +16,7 @@ The worker also has correctness problems that the redesign must not carry over: 
 2. Runs are immutable and versioned. History is kept; the web highlights the latest.
 3. `ParseJob` is removed. Per-file results live in a run-to-upload join row.
 4. API first, with tests. Web changes follow in a separate spec.
-5. Startup auto-migrate (`db.Database.Migrate()` in `Program.cs`) is removed. Migrations run as a deploy step, defined in the delivery spec.
+5. Startup auto-migrate (`db.Database.Migrate()` in `Program.cs`) is removed. Migrations run as a deploy step, defined in `2026-09-06-api-delivery-pipeline-design.md`.
 6. Outputs stay in `OutputArtifact`, re-pointed from the job to the run, so the download endpoint is unchanged and a run can produce several files later (Hacienda annexes).
 
 ## Data model
@@ -68,7 +68,7 @@ Rows are inserted when the run is created, one per upload in the period at that 
 
 ### Migration
 
-One EF migration generated from the model, with an explicit `DELETE FROM output_artifacts` before the FK swap. Startup `Migrate()` is removed from `Program.cs`. Local development applies migrations with `dotnet ef database update`. Production applies them through the pipeline (delivery spec).
+One EF migration generated from the model, with an explicit `DELETE FROM output_artifacts` before the FK swap. Startup `Migrate()` is removed from `Program.cs`. Local development applies migrations with `dotnet ef database update`. Production applies them through the pipeline (`2026-09-06-api-delivery-pipeline-design.md`).
 
 ## API
 
@@ -208,8 +208,8 @@ Required tests:
 
 - Real Excel and PDF parsing behind `ICsvGenerator`.
 - Pagination on list endpoints.
-- Rate limiting, Secret Manager, Swagger exposure, CORS tightening (security review, 2026-09-06).
-- Deployment pipeline changes (delivery spec).
+- Rate limiting and CORS tightening (security review, 2026-09-06). Secret Manager and disabling Swagger in production are covered by the delivery spec.
+- Deployment pipeline changes: `2026-09-06-api-delivery-pipeline-design.md`.
 
 ## Web follow-up (separate spec)
 
