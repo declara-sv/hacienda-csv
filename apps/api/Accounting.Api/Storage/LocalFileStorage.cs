@@ -41,4 +41,15 @@ public sealed class LocalFileStorage(IOptions<StorageOptions> options) : IFileSt
         Stream stream = File.OpenRead(fullPath);
         return Task.FromResult<Stream?>(stream);
     }
+
+    public Task DeleteAsync(StoredFileReference file, CancellationToken cancellationToken = default)
+    {
+        var fullPath = Path.Combine(_options.LocalRootPath, file.Container, file.Path.Replace('/', Path.DirectorySeparatorChar));
+        if (File.Exists(fullPath))
+        {
+            File.Delete(fullPath);
+        }
+
+        return Task.CompletedTask;
+    }
 }
