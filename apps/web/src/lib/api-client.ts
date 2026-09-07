@@ -1,4 +1,5 @@
 import { clearSession, readSession, writeSession } from '#/auth/auth-storage'
+import { normalizeUpload, normalizeUploadCreated } from './normalize'
 import type {
   AuthSession,
   ClientDetail,
@@ -41,7 +42,9 @@ async function parseError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, messageFromServer, payload)
 }
 
-async function refreshSession(current: AuthSession): Promise<AuthSession | null> {
+async function refreshSession(
+  current: AuthSession,
+): Promise<AuthSession | null> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       try {
@@ -133,16 +136,24 @@ async function request<T>(
 
 export const authApi = {
   register: (payload: { email: string; password: string; fullName: string }) =>
-    request<AuthSession>('/api/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }, { authenticated: false }),
+    request<AuthSession>(
+      '/api/auth/register',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      { authenticated: false },
+    ),
 
   login: (payload: { email: string; password: string }) =>
-    request<AuthSession>('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }, { authenticated: false }),
+    request<AuthSession>(
+      '/api/auth/login',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      { authenticated: false },
+    ),
 
   logout: (refreshToken: string) =>
     request<void>('/api/auth/logout', {
@@ -185,7 +196,9 @@ export const clientsApi = {
 
 export const uploadsApi = {
   list: (clientId: string, periodId: string) =>
-    request<Upload[]>(`/api/clients/${clientId}/periods/${periodId}/uploads`),
+    request<Upload[]>(
+      `/api/clients/${clientId}/periods/${periodId}/uploads`,
+    ).then((uploads) => uploads.map(normalizeUpload)),
 
   create: (
     clientId: string,
@@ -196,10 +209,13 @@ export const uploadsApi = {
     body.append('file', payload.file)
     body.append('sourceFileKind', payload.sourceFileKind)
 
-    return request<UploadCreated>(`/api/clients/${clientId}/periods/${periodId}/uploads`, {
-      method: 'POST',
-      body,
-    })
+    return request<UploadCreated>(
+      `/api/clients/${clientId}/periods/${periodId}/uploads`,
+      {
+        method: 'POST',
+        body,
+      },
+    ).then(normalizeUploadCreated)
   },
 
   async downloadArtifact(artifactId: string, fileName: string) {
@@ -208,11 +224,14 @@ export const uploadsApi = {
       throw new Error('No hay sesión activa.')
     }
 
-    const response = await fetch(`${API_URL}/api/artifacts/${artifactId}/download`, {
-      headers: {
-        Authorization: `Bearer ${session.accessToken}`,
+    const response = await fetch(
+      `${API_URL}/api/artifacts/${artifactId}/download`,
+      {
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
       },
-    })
+    )
 
     if (!response.ok) {
       throw await parseError(response)

@@ -1,9 +1,11 @@
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { authApi } from '#/lib/api-client'
 import { clearSession, readSession, writeSession } from './auth-storage'
 import type { AuthSession } from '#/lib/api-types'
 
 type AuthContextValue = {
+  /** False until the session has been read from storage on the client. */
+  ready: boolean
   session: AuthSession | null
   login: (email: string, password: string) => Promise<void>
   register: (fullName: string, email: string, password: string) => Promise<void>
@@ -13,10 +15,19 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<AuthSession | null>(() => readSession())
+  // Start empty on both server and client so the first render matches during
+  // hydration, then read localStorage once mounted.
+  const [session, setSession] = useState<AuthSession | null>(null)
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    setSession(readSession())
+    setReady(true)
+  }, [])
 
   const value = useMemo<AuthContextValue>(
     () => ({
+      ready,
       session,
       login: async (email, password) => {
         const nextSession = await authApi.login({ email, password })
@@ -24,7 +35,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(nextSession)
       },
       register: async (fullName, email, password) => {
-        const nextSession = await authApi.register({ fullName, email, password })
+        const nextSession = await authApi.register({
+          fullName,
+          email,
+          password,
+        })
         writeSession(nextSession)
         setSession(nextSession)
       },
@@ -39,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       },
     }),
-    [session],
+    [ready, session],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
