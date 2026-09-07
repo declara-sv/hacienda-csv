@@ -3,6 +3,7 @@ using Accounting.Api.Domain.Entities;
 using Accounting.Api.Domain.Enums;
 using Accounting.Api.Storage;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Accounting.Api.Features.Uploads;
@@ -17,7 +18,8 @@ public enum DeleteUploadOutcome
 public sealed class UploadsService(
     AppDbContext dbContext,
     IFileStorage fileStorage,
-    IOptions<StorageOptions> storageOptions)
+    IOptions<StorageOptions> storageOptions,
+    ILogger<UploadsService> logger)
 {
     private readonly StorageOptions _storageOptions = storageOptions.Value;
 
@@ -105,10 +107,18 @@ public sealed class UploadsService(
             return DeleteUploadOutcome.ReferencedByActiveRun;
         }
 
-        await fileStorage.DeleteAsync(new StoredFileReference(upload.StorageProvider, upload.StorageContainer, upload.StoragePath), cancellationToken);
-
         dbContext.Uploads.Remove(upload);
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await fileStorage.DeleteAsync(new StoredFileReference(upload.StorageProvider, upload.StorageContainer, upload.StoragePath), cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "No se pudo eliminar el archivo de almacenamiento para el upload {UploadId}.", upload.Id);
+        }
+
         return DeleteUploadOutcome.Deleted;
     }
 
