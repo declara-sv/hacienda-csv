@@ -102,15 +102,24 @@ export const messages = {
 
     uploadsTitle: 'Carga de documentos',
     uploadsIntro:
-      'Sube el Excel o PDF del período. Procesamos el archivo y te entregamos el CSV.',
-    dropzoneTitle: 'Arrastra un archivo aquí o haz clic para elegirlo',
+      'Sube los Excel o PDF del período y genera el CSV cuando estén listos.',
+    dropzoneTitle: 'Arrastra archivos aquí o haz clic para elegirlos',
     dropzoneHint: 'Excel (.xls, .xlsx) o PDF',
+    selectFiles: 'Seleccionar archivos',
+    uploadFiles: 'Subir archivos',
+    uploadQueue: 'Archivos pendientes de subir',
+    fileEmpty: 'El archivo está vacío.',
+    retryFile: 'Reintentar {name}',
+    removeFile: 'Quitar {name}',
+    uploadRefreshError:
+      'El archivo se guardó, pero no se pudo actualizar el listado. Recarga la página.',
     fileKind: 'Tipo de archivo',
     fileKindDetected: 'Detectado por la extensión. Puedes cambiarlo.',
     fileUnsupported: 'Formato no admitido. Usa .xls, .xlsx o .pdf.',
     upload: 'Subir archivo',
     uploading: 'Subiendo',
-    uploadSuccess: 'Archivo subido. El procesamiento empieza en unos segundos.',
+    uploadSuccess:
+      'Archivo subido. Puedes generar el CSV cuando hayas terminado de subir tus documentos.',
     uploadError: 'No se pudo subir el archivo.',
     uploadSelectFirst: 'Selecciona un archivo.',
     uploadsHistory: 'Historial de cargas',
