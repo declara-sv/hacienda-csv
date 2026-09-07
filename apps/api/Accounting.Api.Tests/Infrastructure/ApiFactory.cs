@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Npgsql;
 
 namespace Accounting.Api.Tests.Infrastructure;
 
@@ -24,6 +25,8 @@ public sealed class ApiFactory(string connectionString) : WebApplicationFactory<
         Environment.SetEnvironmentVariable("Storage__Provider", "Local");
         Environment.SetEnvironmentVariable("Storage__LocalRootPath", StorageRoot);
         Environment.SetEnvironmentVariable("Jwt__SigningKey", "test-signing-key-for-integration-tests-0123456789");
+        Environment.SetEnvironmentVariable("Jwt__Issuer", "Accounting.Api");
+        Environment.SetEnvironmentVariable("Jwt__Audience", "Accounting.Web");
         Environment.SetEnvironmentVariable("Jwt__AccessTokenMinutes", "20");
         Environment.SetEnvironmentVariable("Generation__PollIntervalSeconds", "1");
         Environment.SetEnvironmentVariable("Generation__RunTimeoutMinutes", "10");
@@ -55,6 +58,22 @@ public sealed class ApiFactory(string connectionString) : WebApplicationFactory<
     {
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        // Program.cs loads a local .env before reading configuration, and DotEnvLoader overwrites
+        // environment variables unconditionally. If a developer .env happens to be visible from the
+        // test process's working directory, it would silently win over the ConnectionStrings__Postgres
+        // override set in CreateHostBuilder and redirect the whole suite at the real local dev
+        // database. Fail loudly instead of migrating (and later writing data) into the wrong database.
+        var expected = new NpgsqlConnectionStringBuilder(connectionString);
+        var actual = new NpgsqlConnectionStringBuilder(db.Database.GetConnectionString());
+        if (!string.Equals(actual.Host, expected.Host, StringComparison.OrdinalIgnoreCase) || actual.Port != expected.Port)
+        {
+            throw new InvalidOperationException(
+                $"El host de prueba está conectado a la base de datos equivocada: se esperaba {expected.Host}:{expected.Port} " +
+                $"(contenedor Testcontainers) pero se resolvió {actual.Host}:{actual.Port}. Esto suele indicar que un archivo " +
+                ".env visible desde el directorio de trabajo del proceso de pruebas sobrescribió ConnectionStrings__Postgres.");
+        }
+
         await db.Database.MigrateAsync();
     }
 
