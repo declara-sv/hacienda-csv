@@ -462,6 +462,35 @@ describe('PeriodDocuments', () => {
     ).toBeTruthy()
   })
 
+  it('locks an already-open confirmation once a run claims the document', async () => {
+    listUploads.mockResolvedValue([upload('u1')])
+    setup()
+
+    await screen.findByText('u1.xlsx')
+    fireEvent.click(button('Eliminar u1.xlsx'))
+    expect(button('Sí, eliminar').disabled).toBe(false)
+
+    // Another session starts a run over this document while the prompt is open.
+    listRuns.mockResolvedValue([
+      run(2, {
+        status: 'Running',
+        completedAtUtc: null,
+        artifacts: [],
+        files: [runFile({ uploadId: 'u1' })],
+      }),
+    ])
+    fireEvent.click(button('Actualizar'))
+
+    await waitFor(() => expect(button('Sí, eliminar').disabled).toBe(true))
+    fireEvent.click(button('Sí, eliminar'))
+    expect(removeUpload).not.toHaveBeenCalled()
+    expect(
+      screen.getByText(
+        'No se puede eliminar mientras una generación en curso lo usa.',
+      ),
+    ).toBeTruthy()
+  })
+
   it('presents a delete conflict and refetches both queries', async () => {
     listUploads.mockResolvedValue([upload('u1')])
     removeUpload.mockRejectedValue(

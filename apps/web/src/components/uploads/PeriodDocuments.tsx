@@ -260,6 +260,13 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
               const deleting =
                 deleteUploadMutation.isPending &&
                 deleteUploadMutation.variables === upload.id
+              // One guard for the trigger and the confirmation: an open
+              // confirmation must lock the moment a run claims the document,
+              // whether the run is ours or arrived from another session.
+              const deleteBlocked =
+                creatingRun ||
+                deleteUploadMutation.isPending ||
+                lockedByActiveRun
               return (
                 <li
                   key={upload.id}
@@ -311,8 +318,7 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
                         variant="secondary"
                         size="sm"
                         loading={deleting}
-                        // A snapshot is being taken; do not race it.
-                        disabled={creatingRun}
+                        disabled={deleteBlocked}
                         onClick={() => deleteUploadMutation.mutate(upload.id)}
                       >
                         {t('documentDeleteConfirm')}
@@ -331,11 +337,7 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
                       variant="ghost"
                       size="sm"
                       icon={<Trash2 className="size-4" strokeWidth={2} />}
-                      disabled={
-                        creatingRun ||
-                        deleteUploadMutation.isPending ||
-                        lockedByActiveRun
-                      }
+                      disabled={deleteBlocked}
                       aria-label={t('documentDelete', {
                         name: upload.originalFileName,
                       })}
