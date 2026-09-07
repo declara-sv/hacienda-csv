@@ -113,23 +113,52 @@ export const messages = {
     removeFile: 'Quitar {name}',
     uploadRefreshError:
       'El archivo se guardó, pero no se pudo actualizar el listado. Recarga la página.',
-    fileKind: 'Tipo de archivo',
-    fileKindDetected: 'Detectado por la extensión. Puedes cambiarlo.',
     fileUnsupported: 'Formato no admitido. Usa .xls, .xlsx o .pdf.',
-    upload: 'Subir archivo',
     uploading: 'Subiendo',
-    uploadSuccess:
-      'Archivo subido. Puedes generar el CSV cuando hayas terminado de subir tus documentos.',
     uploadError: 'No se pudo subir el archivo.',
-    uploadSelectFirst: 'Selecciona un archivo.',
-    uploadsHistory: 'Historial de cargas',
-    uploadsEmpty: 'Todavía no hay cargas en este período.',
-    uploadsEmptyBody: 'Sube el primer archivo y el resultado aparecerá aquí.',
-    uploadsListLabel: 'Cargas del período',
-    processing: 'Procesamiento',
+    uploadDocumentsTitle: 'Subir documentos',
+    uploadDocumentsIntro:
+      'Subir documentos no genera nada por sí solo: cuando estén todos, genera el CSV.',
+    uploadsEmpty: 'Todavía no hay documentos en este período.',
+    uploadsEmptyBody:
+      'Sube los Excel o PDF del período para poder generar el CSV.',
+    uploadsListLabel: 'Listado de documentos',
     downloadCsv: 'Descargar CSV',
     downloading: 'Descargando',
     downloadError: 'No se pudo descargar el archivo.',
+
+    documentsTitle: 'Documentos del período',
+    documentsLoading: 'Cargando documentos',
+    documentsError: 'No se pudieron cargar los documentos.',
+    documentIncluded: 'Incluido en la última generación',
+    documentNotIncluded: 'No incluido en la última generación',
+    documentDelete: 'Eliminar {name}',
+    documentDeleteQuestion: '¿Eliminar este documento?',
+    documentDeleteConfirm: 'Sí, eliminar',
+    documentDeleteError: 'No se pudo eliminar el documento.',
+    documentDeleteBlocked:
+      'No se puede eliminar mientras una generación en curso lo usa.',
+    delete: 'Eliminar',
+    refresh: 'Actualizar',
+
+    generationsTitle: 'Historial de generaciones',
+    generationsIntro:
+      'Cada generación crea una versión nueva del CSV con los documentos subidos hasta ese momento.',
+    generationsError: 'No se pudo cargar el historial de generaciones.',
+    generateCsv: 'Generar CSV',
+    generating: 'Generando',
+    generateError: 'No se pudo generar el CSV.',
+    generateBlockedLoading: 'Cargando los datos del período.',
+    generateBlockedUnavailable:
+      'No pudimos cargar los datos del período. Actualiza antes de generar.',
+    generateBlockedActiveRun:
+      'Ya hay una generación en curso. Espera a que termine.',
+    generateBlockedMutations:
+      'Espera a que terminen los cambios sobre los documentos.',
+    generateBlockedQueue:
+      'Sube o quita los archivos pendientes antes de generar.',
+    generateBlockedNoDocuments:
+      'Sube al menos un documento para generar el CSV.',
 
     generationsEmpty: 'Todavía no has generado un CSV.',
     generationsEmptyBody:
