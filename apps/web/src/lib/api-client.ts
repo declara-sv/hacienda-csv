@@ -23,6 +23,28 @@ export class ApiError extends Error {
 
 let refreshPromise: Promise<AuthSession | null> | null = null
 
+/**
+ * ValidationProblemDetails carries the human message in `errors`; its `title`
+ * is English framework boilerplate ("One or more validation errors occurred.").
+ */
+function firstValidationDetail(payload: unknown): string | null {
+  if (typeof payload !== 'object' || payload === null) return null
+  const errors = (payload as { errors?: unknown }).errors
+  if (typeof errors !== 'object' || errors === null || Array.isArray(errors))
+    return null
+
+  for (const value of Object.values(errors)) {
+    if (typeof value === 'string' && value.trim()) return value
+    if (!Array.isArray(value)) continue
+    const first = value.find(
+      (item): item is string => typeof item === 'string' && item.trim() !== '',
+    )
+    if (first) return first
+  }
+
+  return null
+}
+
 async function parseError(response: Response): Promise<ApiError> {
   let payload: unknown = null
 
@@ -33,11 +55,12 @@ async function parseError(response: Response): Promise<ApiError> {
   }
 
   const messageFromServer =
-    typeof payload === 'object' && payload !== null && 'title' in payload
+    firstValidationDetail(payload) ??
+    (typeof payload === 'object' && payload !== null && 'title' in payload
       ? String((payload as { title: string }).title)
       : typeof payload === 'object' && payload !== null && 'message' in payload
         ? String((payload as { message: string }).message)
-        : 'Error inesperado en la API.'
+        : 'Error inesperado en la API.')
 
   return new ApiError(response.status, messageFromServer, payload)
 }

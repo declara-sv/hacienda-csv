@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { runsApi, uploadsApi } from './api-client'
+import { ApiError, runsApi, uploadsApi } from './api-client'
 
 vi.mock('#/auth/auth-storage', () => ({
   readSession: vi.fn(() => ({ accessToken: 'test-token' })),
@@ -119,6 +119,42 @@ describe('generation API', () => {
     )
     expect(fetchMock.mock.calls[0][1]?.method).toBe('POST')
     expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined()
+  })
+})
+
+describe('validation errors', () => {
+  it('prefers the first validation detail over the ProblemDetails title', async () => {
+    const details = {
+      title: 'One or more validation errors occurred.',
+      status: 400,
+      errors: { uploads: ['El período no tiene archivos para generar.'] },
+    }
+    fetchMock.mockResolvedValueOnce(json(details, 400))
+
+    const error = await runsApi.create('c1', 'p1').catch((reason) => reason)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).message).toBe(
+      'El período no tiene archivos para generar.',
+    )
+    expect((error as ApiError).status).toBe(400)
+    expect((error as ApiError).details).toEqual(details)
+  })
+
+  it('accepts a plain string validation detail', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json({ title: 'Bad Request', errors: { file: 'Archivo inválido.' } }, 400),
+    )
+    await expect(uploadsApi.remove('c1', 'p1', 'u1')).rejects.toMatchObject({
+      message: 'Archivo inválido.',
+    })
+  })
+
+  it('keeps the title when the body carries no validation errors', async () => {
+    fetchMock.mockResolvedValueOnce(json({ title: 'Conflicto.' }, 409))
+    await expect(runsApi.create('c1', 'p1')).rejects.toMatchObject({
+      message: 'Conflicto.',
+    })
   })
 })
 
