@@ -80,7 +80,7 @@ All routes sit under `api/clients/{clientId:guid}/periods/{filingPeriodId:guid}`
 |---|---|---|---|
 | GET | `/uploads` | 200 `UploadDto[]` | newest first |
 | POST | `/uploads` | 201 `UploadDto` | multipart `file` + `sourceFileKind`, unchanged input |
-| DELETE | `/uploads/{uploadId}` | 204 | deletes storage object, then row |
+| DELETE | `/uploads/{uploadId}` | 204 | deletes the row, then the storage object best-effort (a failed blob delete is logged, never surfaced) |
 
 `UploadDto`: `id`, `filingPeriodId`, `originalFileName`, `sourceFileKind`, `contentType`, `sizeBytes`, `createdAtUtc`, `includedInLatestRun` (bool). The bool is true when a `generation_run_files` row links this upload to the period's most recent Completed run. The `jobs` array is gone. `UploadCreatedDto` is gone; POST returns the same `UploadDto`.
 
