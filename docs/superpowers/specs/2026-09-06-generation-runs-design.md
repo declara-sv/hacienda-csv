@@ -100,7 +100,7 @@ Upload validation stays as it is today (non-empty, extension matches kind, 20 MB
 
 `OutputArtifactDto` is unchanged.
 
-POST computes `Version = max(existing) + 1` inside the same transaction as the insert. A unique violation on the partial index is caught and mapped to 409, which also covers the race where two POSTs arrive together.
+POST computes `Version = max(existing) + 1` with plain reads before the insert; there is no explicit transaction. The unique indexes are the guard: two concurrent creates both insert `Pending`, so exactly one hits the partial unique index (or the `(FilingPeriodId, Version)` index) and its Postgres unique violation is mapped to 409. Do not add a transaction here; it adds nothing the indexes do not already guarantee.
 
 ### Artifacts
 
@@ -205,6 +205,15 @@ Required tests:
 12. Status fields serialize as strings.
 
 ## Out of scope, tracked as follow-ups
+
+Found in the final branch review on 2026-09-06 and deferred deliberately:
+
+- Guarded completion or heartbeat for runs longer than `RunTimeoutMinutes`. Today recovery can fail a long run and the processor then overwrites it to Completed. Unreachable with the placeholder; fix alongside the real parser.
+- Each included file is opened twice (existence probe, then generator read). Replace the probe with an `ExistsAsync` on `IFileStorage` when the real parser lands.
+- A multi-file generator failing on a later output would persist earlier artifacts next to a Failed run. Store all outputs before adding any `OutputArtifact` entities.
+- `Down()` of the GenerationRuns migration does not clear `output_artifacts` before re-adding the `parse_jobs` FK. Migrations are forward-only in production, so this only matters for local rollback.
+- Upload create can leak a stored blob if `SaveChangesAsync` fails after `SaveAsync`.
+- No "output is stale" signal when a file is deleted after a Completed run; `includedInLatestRun` only flags additions.
 
 - Real Excel and PDF parsing behind `ICsvGenerator`.
 - Pagination on list endpoints.
