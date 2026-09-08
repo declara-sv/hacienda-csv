@@ -102,25 +102,76 @@ export const messages = {
 
     uploadsTitle: 'Carga de documentos',
     uploadsIntro:
-      'Sube el Excel o PDF del período. Procesamos el archivo y te entregamos el CSV.',
-    dropzoneTitle: 'Arrastra un archivo aquí o haz clic para elegirlo',
+      'Sube los Excel o PDF del período y genera el CSV cuando estén listos.',
+    dropzoneTitle: 'Arrastra archivos aquí o haz clic para elegirlos',
     dropzoneHint: 'Excel (.xls, .xlsx) o PDF',
-    fileKind: 'Tipo de archivo',
-    fileKindDetected: 'Detectado por la extensión. Puedes cambiarlo.',
+    selectFiles: 'Seleccionar archivos',
+    uploadFiles: 'Subir archivos',
+    uploadQueue: 'Archivos pendientes de subir',
+    fileEmpty: 'El archivo está vacío.',
+    retryFile: 'Reintentar {name}',
+    removeFile: 'Quitar {name}',
+    uploadRefreshError:
+      'El archivo se guardó, pero no se pudo actualizar el listado. Recarga la página.',
     fileUnsupported: 'Formato no admitido. Usa .xls, .xlsx o .pdf.',
-    upload: 'Subir archivo',
     uploading: 'Subiendo',
-    uploadSuccess: 'Archivo subido. El procesamiento empieza en unos segundos.',
     uploadError: 'No se pudo subir el archivo.',
-    uploadSelectFirst: 'Selecciona un archivo.',
-    uploadsHistory: 'Historial de cargas',
-    uploadsEmpty: 'Todavía no hay cargas en este período.',
-    uploadsEmptyBody: 'Sube el primer archivo y el resultado aparecerá aquí.',
-    uploadsListLabel: 'Cargas del período',
-    processing: 'Procesamiento',
+    uploadDocumentsTitle: 'Subir documentos',
+    uploadDocumentsIntro:
+      'Subir documentos no genera nada por sí solo: cuando estén todos, genera el CSV.',
+    uploadsEmpty: 'Todavía no hay documentos en este período.',
+    uploadsEmptyBody:
+      'Sube los Excel o PDF del período para poder generar el CSV.',
+    uploadsListLabel: 'Listado de documentos',
     downloadCsv: 'Descargar CSV',
     downloading: 'Descargando',
     downloadError: 'No se pudo descargar el archivo.',
+
+    documentsTitle: 'Documentos del período',
+    documentsLoading: 'Cargando documentos',
+    documentsError: 'No se pudieron cargar los documentos.',
+    documentIncluded: 'Forma parte de la última versión completada',
+    documentNotIncluded: 'No forma parte de la última versión completada',
+    documentDelete: 'Eliminar {name}',
+    documentDeleteQuestion: '¿Eliminar este documento?',
+    documentDeleteConfirm: 'Sí, eliminar',
+    documentDeleteError: 'No se pudo eliminar el documento.',
+    documentDeleteBlocked:
+      'No se puede eliminar mientras una generación en curso lo usa.',
+    delete: 'Eliminar',
+    refresh: 'Actualizar',
+
+    generationsTitle: 'Historial de generaciones',
+    generationsIntro:
+      'Cada generación crea una versión nueva del CSV con los documentos subidos hasta ese momento.',
+    generationsError: 'No se pudo cargar el historial de generaciones.',
+    generateCsv: 'Generar CSV',
+    generating: 'Generando',
+    generateError: 'No se pudo generar el CSV.',
+    generateBlockedLoading: 'Cargando los datos del período.',
+    generateBlockedUnavailable:
+      'No pudimos cargar los datos del período. Actualiza antes de generar.',
+    generateBlockedActiveRun:
+      'Ya hay una generación en curso. Espera a que termine.',
+    generateBlockedMutations:
+      'Espera a que terminen los cambios sobre los documentos.',
+    generateBlockedQueue:
+      'Sube o quita los archivos pendientes antes de generar.',
+    generateBlockedNoDocuments:
+      'Sube al menos un documento para generar el CSV.',
+
+    generationsEmpty: 'Todavía no has generado un CSV.',
+    generationsEmptyBody:
+      'Sube los documentos del período y genera el CSV cuando estén listos.',
+    generationVersion: 'Versión {version}',
+    generationLatestCompleted: 'Último CSV generado',
+    generationCreated: 'Creada {date}',
+    generationStarted: 'Iniciada {date}',
+    generationCompleted: 'Finalizada {date}',
+    generationFiles: 'Archivos de esta versión ({count})',
+    generationFileIncluded: 'Incluido',
+    generationPartialFailure:
+      '{count} archivo(s) no se incluyeron en este CSV. Revisa los errores de esta versión.',
 
     statusPending: 'Pendiente',
     statusRunning: 'Procesando',

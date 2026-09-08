@@ -1,11 +1,11 @@
 import { clearSession, readSession, writeSession } from '#/auth/auth-storage'
-import { normalizeUpload, normalizeUploadCreated } from './normalize'
+import { normalizeRun } from './normalize'
 import type {
   AuthSession,
   ClientDetail,
   ClientSummary,
   Upload,
-  UploadCreated,
+  GenerationRun,
 } from './api-types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5184'
@@ -23,6 +23,28 @@ export class ApiError extends Error {
 
 let refreshPromise: Promise<AuthSession | null> | null = null
 
+/**
+ * ValidationProblemDetails carries the human message in `errors`; its `title`
+ * is English framework boilerplate ("One or more validation errors occurred.").
+ */
+function firstValidationDetail(payload: unknown): string | null {
+  if (typeof payload !== 'object' || payload === null) return null
+  const errors = (payload as { errors?: unknown }).errors
+  if (typeof errors !== 'object' || errors === null || Array.isArray(errors))
+    return null
+
+  for (const value of Object.values(errors)) {
+    if (typeof value === 'string' && value.trim()) return value
+    if (!Array.isArray(value)) continue
+    const first = value.find(
+      (item): item is string => typeof item === 'string' && item.trim() !== '',
+    )
+    if (first) return first
+  }
+
+  return null
+}
+
 async function parseError(response: Response): Promise<ApiError> {
   let payload: unknown = null
 
@@ -33,11 +55,12 @@ async function parseError(response: Response): Promise<ApiError> {
   }
 
   const messageFromServer =
-    typeof payload === 'object' && payload !== null && 'title' in payload
+    firstValidationDetail(payload) ??
+    (typeof payload === 'object' && payload !== null && 'title' in payload
       ? String((payload as { title: string }).title)
       : typeof payload === 'object' && payload !== null && 'message' in payload
         ? String((payload as { message: string }).message)
-        : 'Error inesperado en la API.'
+        : 'Error inesperado en la API.')
 
   return new ApiError(response.status, messageFromServer, payload)
 }
@@ -196,9 +219,7 @@ export const clientsApi = {
 
 export const uploadsApi = {
   list: (clientId: string, periodId: string) =>
-    request<Upload[]>(
-      `/api/clients/${clientId}/periods/${periodId}/uploads`,
-    ).then((uploads) => uploads.map(normalizeUpload)),
+    request<Upload[]>(`/api/clients/${clientId}/periods/${periodId}/uploads`),
 
   create: (
     clientId: string,
@@ -209,14 +230,20 @@ export const uploadsApi = {
     body.append('file', payload.file)
     body.append('sourceFileKind', payload.sourceFileKind)
 
-    return request<UploadCreated>(
+    return request<Upload>(
       `/api/clients/${clientId}/periods/${periodId}/uploads`,
       {
         method: 'POST',
         body,
       },
-    ).then(normalizeUploadCreated)
+    )
   },
+
+  remove: (clientId: string, periodId: string, uploadId: string) =>
+    request<void>(
+      `/api/clients/${clientId}/periods/${periodId}/uploads/${uploadId}`,
+      { method: 'DELETE' },
+    ),
 
   async downloadArtifact(artifactId: string, fileName: string) {
     const session = readSession()
@@ -247,4 +274,17 @@ export const uploadsApi = {
     link.remove()
     window.URL.revokeObjectURL(url)
   },
+}
+
+export const runsApi = {
+  list: (clientId: string, periodId: string) =>
+    request<GenerationRun[]>(
+      `/api/clients/${clientId}/periods/${periodId}/runs`,
+    ).then((runs) => runs.map(normalizeRun)),
+
+  create: (clientId: string, periodId: string) =>
+    request<GenerationRun>(
+      `/api/clients/${clientId}/periods/${periodId}/runs`,
+      { method: 'POST' },
+    ).then(normalizeRun),
 }

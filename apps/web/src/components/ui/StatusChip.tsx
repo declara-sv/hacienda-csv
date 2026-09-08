@@ -2,11 +2,11 @@ import { AlertCircle, CheckCircle2, Clock, Loader2 } from 'lucide-react'
 import { useI18n } from '#/i18n/I18nProvider'
 import { cn } from '#/lib/cn'
 import type { MessageKey } from '#/i18n/messages'
-import type { ParseJobStatus } from '#/lib/api-types'
+import type { GenerationRunStatus } from '#/lib/api-types'
 import type { LucideIcon } from 'lucide-react'
 
 const config: Record<
-  ParseJobStatus,
+  GenerationRunStatus,
   { label: MessageKey; className: string; Icon: LucideIcon; spin?: boolean }
 > = {
   Pending: {
@@ -32,7 +32,7 @@ const config: Record<
   },
 }
 
-export function StatusChip({ status }: { status: ParseJobStatus }) {
+export function StatusChip({ status }: { status: GenerationRunStatus }) {
   const { t } = useI18n()
   const { label, className, Icon, spin } = config[status]
 
