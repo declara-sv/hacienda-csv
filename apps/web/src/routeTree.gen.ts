@@ -10,26 +10,26 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ClientesRouteImport } from './routes/clientes'
+import { Route as ClientsRouteImport } from './routes/clients'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as RegistroRouteImport } from './routes/registro'
-import { Route as ClientesIndexRouteImport } from './routes/clientes.index'
-import { Route as ClientesClientIdRouteImport } from './routes/clientes.$clientId'
+import { Route as SignupRouteImport } from './routes/signup'
+import { Route as ClientsIndexRouteImport } from './routes/clients.index'
+import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
 import { Route as LoginIndexRouteImport } from './routes/login.index'
 import { Route as LoginSplatRouteImport } from './routes/login.$'
-import { Route as RegistroIndexRouteImport } from './routes/registro.index'
-import { Route as RegistroSplatRouteImport } from './routes/registro.$'
-import { Route as ClientesClientIdIndexRouteImport } from './routes/clientes.$clientId.index'
-import { Route as ClientesClientIdPeriodosPeriodIdCargasRouteImport } from './routes/clientes.$clientId.periodos.$periodId.cargas'
+import { Route as SignupIndexRouteImport } from './routes/signup.index'
+import { Route as SignupSplatRouteImport } from './routes/signup.$'
+import { Route as ClientsClientIdIndexRouteImport } from './routes/clients.$clientId.index'
+import { Route as ClientsClientIdPeriodsPeriodIdUploadsRouteImport } from './routes/clients.$clientId.periods.$periodId.uploads'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ClientesRoute = ClientesRouteImport.update({
-  id: '/clientes',
-  path: '/clientes',
+const ClientsRoute = ClientsRouteImport.update({
+  id: '/clients',
+  path: '/clients',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -37,20 +37,20 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RegistroRoute = RegistroRouteImport.update({
-  id: '/registro',
-  path: '/registro',
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ClientesIndexRoute = ClientesIndexRouteImport.update({
+const ClientsIndexRoute = ClientsIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => ClientesRoute,
+  getParentRoute: () => ClientsRoute,
 } as any)
-const ClientesClientIdRoute = ClientesClientIdRouteImport.update({
+const ClientsClientIdRoute = ClientsClientIdRouteImport.update({
   id: '/$clientId',
   path: '/$clientId',
-  getParentRoute: () => ClientesRoute,
+  getParentRoute: () => ClientsRoute,
 } as any)
 const LoginIndexRoute = LoginIndexRouteImport.update({
   id: '/',
@@ -62,113 +62,113 @@ const LoginSplatRoute = LoginSplatRouteImport.update({
   path: '/$',
   getParentRoute: () => LoginRoute,
 } as any)
-const RegistroIndexRoute = RegistroIndexRouteImport.update({
+const SignupIndexRoute = SignupIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => RegistroRoute,
+  getParentRoute: () => SignupRoute,
 } as any)
-const RegistroSplatRoute = RegistroSplatRouteImport.update({
+const SignupSplatRoute = SignupSplatRouteImport.update({
   id: '/$',
   path: '/$',
-  getParentRoute: () => RegistroRoute,
+  getParentRoute: () => SignupRoute,
 } as any)
-const ClientesClientIdIndexRoute = ClientesClientIdIndexRouteImport.update({
+const ClientsClientIdIndexRoute = ClientsClientIdIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => ClientesClientIdRoute,
+  getParentRoute: () => ClientsClientIdRoute,
 } as any)
-const ClientesClientIdPeriodosPeriodIdCargasRoute =
-  ClientesClientIdPeriodosPeriodIdCargasRouteImport.update({
-    id: '/periodos/$periodId/cargas',
-    path: '/periodos/$periodId/cargas',
-    getParentRoute: () => ClientesClientIdRoute,
+const ClientsClientIdPeriodsPeriodIdUploadsRoute =
+  ClientsClientIdPeriodsPeriodIdUploadsRouteImport.update({
+    id: '/periods/$periodId/uploads',
+    path: '/periods/$periodId/uploads',
+    getParentRoute: () => ClientsClientIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/clientes': typeof ClientesRouteWithChildren
+  '/clients': typeof ClientsRouteWithChildren
   '/login': typeof LoginRouteWithChildren
-  '/registro': typeof RegistroRouteWithChildren
-  '/clientes/$clientId': typeof ClientesClientIdRouteWithChildren
+  '/signup': typeof SignupRouteWithChildren
+  '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
   '/login/$': typeof LoginSplatRoute
-  '/registro/$': typeof RegistroSplatRoute
-  '/clientes/': typeof ClientesIndexRoute
+  '/signup/$': typeof SignupSplatRoute
+  '/clients/': typeof ClientsIndexRoute
   '/login/': typeof LoginIndexRoute
-  '/registro/': typeof RegistroIndexRoute
-  '/clientes/$clientId/': typeof ClientesClientIdIndexRoute
-  '/clientes/$clientId/periodos/$periodId/cargas': typeof ClientesClientIdPeriodosPeriodIdCargasRoute
+  '/signup/': typeof SignupIndexRoute
+  '/clients/$clientId/': typeof ClientsClientIdIndexRoute
+  '/clients/$clientId/periods/$periodId/uploads': typeof ClientsClientIdPeriodsPeriodIdUploadsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login/$': typeof LoginSplatRoute
-  '/registro/$': typeof RegistroSplatRoute
-  '/clientes': typeof ClientesIndexRoute
+  '/signup/$': typeof SignupSplatRoute
+  '/clients': typeof ClientsIndexRoute
   '/login': typeof LoginIndexRoute
-  '/registro': typeof RegistroIndexRoute
-  '/clientes/$clientId': typeof ClientesClientIdIndexRoute
-  '/clientes/$clientId/periodos/$periodId/cargas': typeof ClientesClientIdPeriodosPeriodIdCargasRoute
+  '/signup': typeof SignupIndexRoute
+  '/clients/$clientId': typeof ClientsClientIdIndexRoute
+  '/clients/$clientId/periods/$periodId/uploads': typeof ClientsClientIdPeriodsPeriodIdUploadsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/clientes': typeof ClientesRouteWithChildren
+  '/clients': typeof ClientsRouteWithChildren
   '/login': typeof LoginRouteWithChildren
-  '/registro': typeof RegistroRouteWithChildren
-  '/clientes/$clientId': typeof ClientesClientIdRouteWithChildren
+  '/signup': typeof SignupRouteWithChildren
+  '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
   '/login/$': typeof LoginSplatRoute
-  '/registro/$': typeof RegistroSplatRoute
-  '/clientes/': typeof ClientesIndexRoute
+  '/signup/$': typeof SignupSplatRoute
+  '/clients/': typeof ClientsIndexRoute
   '/login/': typeof LoginIndexRoute
-  '/registro/': typeof RegistroIndexRoute
-  '/clientes/$clientId/': typeof ClientesClientIdIndexRoute
-  '/clientes/$clientId/periodos/$periodId/cargas': typeof ClientesClientIdPeriodosPeriodIdCargasRoute
+  '/signup/': typeof SignupIndexRoute
+  '/clients/$clientId/': typeof ClientsClientIdIndexRoute
+  '/clients/$clientId/periods/$periodId/uploads': typeof ClientsClientIdPeriodsPeriodIdUploadsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/clientes'
+    | '/clients'
     | '/login'
-    | '/registro'
-    | '/clientes/$clientId'
+    | '/signup'
+    | '/clients/$clientId'
     | '/login/$'
-    | '/registro/$'
-    | '/clientes/'
+    | '/signup/$'
+    | '/clients/'
     | '/login/'
-    | '/registro/'
-    | '/clientes/$clientId/'
-    | '/clientes/$clientId/periodos/$periodId/cargas'
+    | '/signup/'
+    | '/clients/$clientId/'
+    | '/clients/$clientId/periods/$periodId/uploads'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login/$'
-    | '/registro/$'
-    | '/clientes'
+    | '/signup/$'
+    | '/clients'
     | '/login'
-    | '/registro'
-    | '/clientes/$clientId'
-    | '/clientes/$clientId/periodos/$periodId/cargas'
+    | '/signup'
+    | '/clients/$clientId'
+    | '/clients/$clientId/periods/$periodId/uploads'
   id:
     | '__root__'
     | '/'
-    | '/clientes'
+    | '/clients'
     | '/login'
-    | '/registro'
-    | '/clientes/$clientId'
+    | '/signup'
+    | '/clients/$clientId'
     | '/login/$'
-    | '/registro/$'
-    | '/clientes/'
+    | '/signup/$'
+    | '/clients/'
     | '/login/'
-    | '/registro/'
-    | '/clientes/$clientId/'
-    | '/clientes/$clientId/periodos/$periodId/cargas'
+    | '/signup/'
+    | '/clients/$clientId/'
+    | '/clients/$clientId/periods/$periodId/uploads'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ClientesRoute: typeof ClientesRouteWithChildren
+  ClientsRoute: typeof ClientsRouteWithChildren
   LoginRoute: typeof LoginRouteWithChildren
-  RegistroRoute: typeof RegistroRouteWithChildren
+  SignupRoute: typeof SignupRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -180,11 +180,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/clientes': {
-      id: '/clientes'
-      path: '/clientes'
-      fullPath: '/clientes'
-      preLoaderRoute: typeof ClientesRouteImport
+    '/clients': {
+      id: '/clients'
+      path: '/clients'
+      fullPath: '/clients'
+      preLoaderRoute: typeof ClientsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -194,26 +194,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/registro': {
-      id: '/registro'
-      path: '/registro'
-      fullPath: '/registro'
-      preLoaderRoute: typeof RegistroRouteImport
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/clientes/': {
-      id: '/clientes/'
+    '/clients/': {
+      id: '/clients/'
       path: '/'
-      fullPath: '/clientes/'
-      preLoaderRoute: typeof ClientesIndexRouteImport
-      parentRoute: typeof ClientesRoute
+      fullPath: '/clients/'
+      preLoaderRoute: typeof ClientsIndexRouteImport
+      parentRoute: typeof ClientsRoute
     }
-    '/clientes/$clientId': {
-      id: '/clientes/$clientId'
+    '/clients/$clientId': {
+      id: '/clients/$clientId'
       path: '/$clientId'
-      fullPath: '/clientes/$clientId'
-      preLoaderRoute: typeof ClientesClientIdRouteImport
-      parentRoute: typeof ClientesRoute
+      fullPath: '/clients/$clientId'
+      preLoaderRoute: typeof ClientsClientIdRouteImport
+      parentRoute: typeof ClientsRoute
     }
     '/login/': {
       id: '/login/'
@@ -229,64 +229,64 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginSplatRouteImport
       parentRoute: typeof LoginRoute
     }
-    '/registro/': {
-      id: '/registro/'
+    '/signup/': {
+      id: '/signup/'
       path: '/'
-      fullPath: '/registro/'
-      preLoaderRoute: typeof RegistroIndexRouteImport
-      parentRoute: typeof RegistroRoute
+      fullPath: '/signup/'
+      preLoaderRoute: typeof SignupIndexRouteImport
+      parentRoute: typeof SignupRoute
     }
-    '/registro/$': {
-      id: '/registro/$'
+    '/signup/$': {
+      id: '/signup/$'
       path: '/$'
-      fullPath: '/registro/$'
-      preLoaderRoute: typeof RegistroSplatRouteImport
-      parentRoute: typeof RegistroRoute
+      fullPath: '/signup/$'
+      preLoaderRoute: typeof SignupSplatRouteImport
+      parentRoute: typeof SignupRoute
     }
-    '/clientes/$clientId/': {
-      id: '/clientes/$clientId/'
+    '/clients/$clientId/': {
+      id: '/clients/$clientId/'
       path: '/'
-      fullPath: '/clientes/$clientId/'
-      preLoaderRoute: typeof ClientesClientIdIndexRouteImport
-      parentRoute: typeof ClientesClientIdRoute
+      fullPath: '/clients/$clientId/'
+      preLoaderRoute: typeof ClientsClientIdIndexRouteImport
+      parentRoute: typeof ClientsClientIdRoute
     }
-    '/clientes/$clientId/periodos/$periodId/cargas': {
-      id: '/clientes/$clientId/periodos/$periodId/cargas'
-      path: '/periodos/$periodId/cargas'
-      fullPath: '/clientes/$clientId/periodos/$periodId/cargas'
-      preLoaderRoute: typeof ClientesClientIdPeriodosPeriodIdCargasRouteImport
-      parentRoute: typeof ClientesClientIdRoute
+    '/clients/$clientId/periods/$periodId/uploads': {
+      id: '/clients/$clientId/periods/$periodId/uploads'
+      path: '/periods/$periodId/uploads'
+      fullPath: '/clients/$clientId/periods/$periodId/uploads'
+      preLoaderRoute: typeof ClientsClientIdPeriodsPeriodIdUploadsRouteImport
+      parentRoute: typeof ClientsClientIdRoute
     }
   }
 }
 
-interface ClientesClientIdRouteChildren {
-  ClientesClientIdIndexRoute: typeof ClientesClientIdIndexRoute
-  ClientesClientIdPeriodosPeriodIdCargasRoute: typeof ClientesClientIdPeriodosPeriodIdCargasRoute
+interface ClientsClientIdRouteChildren {
+  ClientsClientIdIndexRoute: typeof ClientsClientIdIndexRoute
+  ClientsClientIdPeriodsPeriodIdUploadsRoute: typeof ClientsClientIdPeriodsPeriodIdUploadsRoute
 }
 
-const ClientesClientIdRouteChildren: ClientesClientIdRouteChildren = {
-  ClientesClientIdIndexRoute: ClientesClientIdIndexRoute,
-  ClientesClientIdPeriodosPeriodIdCargasRoute:
-    ClientesClientIdPeriodosPeriodIdCargasRoute,
+const ClientsClientIdRouteChildren: ClientsClientIdRouteChildren = {
+  ClientsClientIdIndexRoute: ClientsClientIdIndexRoute,
+  ClientsClientIdPeriodsPeriodIdUploadsRoute:
+    ClientsClientIdPeriodsPeriodIdUploadsRoute,
 }
 
-const ClientesClientIdRouteWithChildren =
-  ClientesClientIdRoute._addFileChildren(ClientesClientIdRouteChildren)
-
-interface ClientesRouteChildren {
-  ClientesClientIdRoute: typeof ClientesClientIdRouteWithChildren
-  ClientesIndexRoute: typeof ClientesIndexRoute
-}
-
-const ClientesRouteChildren: ClientesRouteChildren = {
-  ClientesClientIdRoute: ClientesClientIdRouteWithChildren,
-  ClientesIndexRoute: ClientesIndexRoute,
-}
-
-const ClientesRouteWithChildren = ClientesRoute._addFileChildren(
-  ClientesRouteChildren,
+const ClientsClientIdRouteWithChildren = ClientsClientIdRoute._addFileChildren(
+  ClientsClientIdRouteChildren,
 )
+
+interface ClientsRouteChildren {
+  ClientsClientIdRoute: typeof ClientsClientIdRouteWithChildren
+  ClientsIndexRoute: typeof ClientsIndexRoute
+}
+
+const ClientsRouteChildren: ClientsRouteChildren = {
+  ClientsClientIdRoute: ClientsClientIdRouteWithChildren,
+  ClientsIndexRoute: ClientsIndexRoute,
+}
+
+const ClientsRouteWithChildren =
+  ClientsRoute._addFileChildren(ClientsRouteChildren)
 
 interface LoginRouteChildren {
   LoginSplatRoute: typeof LoginSplatRoute
@@ -300,25 +300,24 @@ const LoginRouteChildren: LoginRouteChildren = {
 
 const LoginRouteWithChildren = LoginRoute._addFileChildren(LoginRouteChildren)
 
-interface RegistroRouteChildren {
-  RegistroSplatRoute: typeof RegistroSplatRoute
-  RegistroIndexRoute: typeof RegistroIndexRoute
+interface SignupRouteChildren {
+  SignupSplatRoute: typeof SignupSplatRoute
+  SignupIndexRoute: typeof SignupIndexRoute
 }
 
-const RegistroRouteChildren: RegistroRouteChildren = {
-  RegistroSplatRoute: RegistroSplatRoute,
-  RegistroIndexRoute: RegistroIndexRoute,
+const SignupRouteChildren: SignupRouteChildren = {
+  SignupSplatRoute: SignupSplatRoute,
+  SignupIndexRoute: SignupIndexRoute,
 }
 
-const RegistroRouteWithChildren = RegistroRoute._addFileChildren(
-  RegistroRouteChildren,
-)
+const SignupRouteWithChildren =
+  SignupRoute._addFileChildren(SignupRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ClientesRoute: ClientesRouteWithChildren,
+  ClientsRoute: ClientsRouteWithChildren,
   LoginRoute: LoginRouteWithChildren,
-  RegistroRoute: RegistroRouteWithChildren,
+  SignupRoute: SignupRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

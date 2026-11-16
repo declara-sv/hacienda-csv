@@ -25,7 +25,7 @@ export function ErrorView({ error }: { error: unknown }) {
       </div>
       <div className="flex flex-wrap gap-2 pt-1">
         <Button onClick={() => router.invalidate()}>{t('errorRetry')}</Button>
-        <Link to="/clientes" className={buttonClasses('secondary')}>
+        <Link to="/clients" className={buttonClasses('secondary')}>
           {t('errorHome')}
         </Link>
       </div>

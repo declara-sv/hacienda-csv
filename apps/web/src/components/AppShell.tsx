@@ -53,7 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Show when="signed-in">
               <Link
-                to="/clientes"
+                to="/clients"
                 className={navLink}
                 activeProps={{
                   className: `${navLink} bg-ink text-surface hover:bg-ink`,
@@ -71,7 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {t('menuLogin')}
               </Link>
               <Link
-                to="/registro"
+                to="/signup"
                 className={buttonClasses('primary', 'sm', 'h-9 rounded-full')}
               >
                 {t('menuRegister')}

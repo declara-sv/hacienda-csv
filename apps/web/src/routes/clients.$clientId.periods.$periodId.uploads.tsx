@@ -10,7 +10,7 @@ import { clientsApi } from '#/lib/api-client'
 import { formatPeriod } from '#/lib/format'
 
 export const Route = createFileRoute(
-  '/clientes/$clientId/periodos/$periodId/cargas',
+  '/clients/$clientId/periods/$periodId/uploads',
 )({
   head: () => ({ meta: [{ title: 'Carga de documentos | HaciendaCSV' }] }),
   component: UploadsPage,
@@ -32,10 +32,10 @@ function UploadsPage() {
     <div className="space-y-8">
       <Breadcrumb
         items={[
-          { label: t('menuClients'), to: '/clientes' },
+          { label: t('menuClients'), to: '/clients' },
           {
             label: client ? client.name : null,
-            to: '/clientes/$clientId',
+            to: '/clients/$clientId',
             params: { clientId },
           },
           { label: periodLabel },
@@ -53,7 +53,7 @@ function UploadsPage() {
           client={client}
           action={
             <Link
-              to="/clientes/$clientId"
+              to="/clients/$clientId"
               params={{ clientId }}
               className={buttonClasses('secondary', 'sm')}
             >

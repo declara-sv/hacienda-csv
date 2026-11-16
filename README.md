@@ -110,7 +110,7 @@ membresía `Owner`. `GET /api/me` devuelve `{user: {id, email, fullName}, accoun
 4. **Orígenes permitidos**: el API acepta en `azp` los orígenes de `CLERK_AUTHORIZED_PARTIES` y, con
    `CORS_ALLOW_VERCEL_SUBDOMAINS=true`, cualquier `https://*.vercel.app`. Agregar el dominio propio de la
    web a `CLERK_AUTHORIZED_PARTIES` (y a `CORS_ALLOWED_ORIGINS`).
-5. **Rutas** (Configure > Paths): inicio de sesión `<origen>/login`, registro `<origen>/registro`,
+5. **Rutas** (Configure > Paths): inicio de sesión `<origen>/login`, registro `<origen>/signup`,
    después de cerrar sesión `/login`. La web ya pasa estas rutas en el código; esto alinea los correos y
    enlaces que envía Clerk.
 

@@ -21,7 +21,7 @@ import { ApiError, clientsApi } from '#/lib/api-client'
 import type { ClientSummary } from '#/lib/api-types'
 import type { CSSProperties } from 'react'
 
-export const Route = createFileRoute('/clientes/')({
+export const Route = createFileRoute('/clients/')({
   head: () => ({ meta: [{ title: 'Clientes | HaciendaCSV' }] }),
   component: ClientsHomePage,
 })
@@ -189,7 +189,7 @@ function ClientTile({ client }: { client: ClientSummary }) {
 
   return (
     <Link
-      to="/clientes/$clientId"
+      to="/clients/$clientId"
       params={{ clientId: client.id }}
       className="group flex h-full flex-col justify-between gap-6 rounded-container border border-line bg-surface-raised p-4 shadow-raised transition duration-200 ease-out-expo hover:-translate-y-0.5 hover:border-accent"
     >

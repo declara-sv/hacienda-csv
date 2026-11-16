@@ -30,7 +30,7 @@ import { rentaLabel, useRentaCatalog } from '#/lib/renta'
 import type { ClientDetail } from '#/lib/api-types'
 import type { CSSProperties } from 'react'
 
-export const Route = createFileRoute('/clientes/$clientId/')({
+export const Route = createFileRoute('/clients/$clientId/')({
   head: () => ({ meta: [{ title: 'Cliente | HaciendaCSV' }] }),
   component: ClientDetailPage,
 })
@@ -60,7 +60,7 @@ function ClientDetailPage() {
     <div className="space-y-8">
       <Breadcrumb
         items={[
-          { label: t('menuClients'), to: '/clientes' },
+          { label: t('menuClients'), to: '/clients' },
           { label: client ? client.name : null },
         ]}
       />
@@ -320,7 +320,7 @@ function PeriodsPanel({ client }: { client: ClientDetail }) {
               style={{ '--i': index } as CSSProperties}
             >
               <Link
-                to="/clientes/$clientId/periodos/$periodId/cargas"
+                to="/clients/$clientId/periods/$periodId/uploads"
                 params={{ clientId: client.id, periodId: period.id }}
                 className="group flex items-center justify-between gap-4 rounded-container border border-line bg-surface-raised px-4 py-3.5 transition duration-200 ease-out-expo hover:-translate-y-0.5 hover:border-accent"
               >
