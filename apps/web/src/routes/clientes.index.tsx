@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   ArrowRight,
   CalendarDays,
@@ -11,7 +11,8 @@ import {
 import { useMemo, useState } from 'react'
 import { Button } from '#/components/ui/Button'
 import { EmptyState } from '#/components/ui/EmptyState'
-import { Field, Input, Textarea, fieldDescribedBy } from '#/components/ui/Field'
+import { ClientForm } from '#/components/clients/ClientForm'
+import { Input } from '#/components/ui/Field'
 import { Notice } from '#/components/ui/Notice'
 import { PageHeader } from '#/components/ui/PageHeader'
 import { TileGridSkeleton } from '#/components/ui/Skeleton'
@@ -223,23 +224,6 @@ function NewClientForm({
   onCreated: () => void
 }) {
   const { t } = useI18n()
-  const queryClient = useQueryClient()
-
-  const [name, setName] = useState('')
-  const [taxId, setTaxId] = useState('')
-  const [notes, setNotes] = useState('')
-  const [error, setError] = useState<string | null>(null)
-
-  const createClientMutation = useMutation({
-    mutationFn: () => clientsApi.create({ name, taxId, notes }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients'] })
-      onCreated()
-    },
-    onError: (err) => {
-      setError(err instanceof ApiError ? err.message : t('clientCreateError'))
-    },
-  })
 
   return (
     <section
@@ -250,79 +234,13 @@ function NewClientForm({
       <h2 id="new-client-heading" className="text-lg font-semibold text-ink">
         {t('newClientTitle')}
       </h2>
-
-      <form
-        className="mt-4 grid gap-5 md:grid-cols-2"
-        onSubmit={(event) => {
-          event.preventDefault()
-          setError(null)
-          createClientMutation.mutate()
-        }}
-      >
-        <Field id="name" label={t('clientName')}>
-          <Input
-            id="name"
-            name="name"
-            autoFocus
-            required
-            maxLength={160}
-            autoComplete="organization"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </Field>
-
-        <Field id="taxId" label={t('clientTaxId')} hint={t('clientTaxIdHint')}>
-          <Input
-            id="taxId"
-            name="taxId"
-            required
-            maxLength={32}
-            aria-describedby={fieldDescribedBy('taxId', t('clientTaxIdHint'))}
-            value={taxId}
-            onChange={(event) => setTaxId(event.target.value)}
-          />
-        </Field>
-
-        <Field
-          id="notes"
-          label={t('clientNotes')}
-          hint={t('clientNotesHint')}
-          className="md:col-span-2"
-        >
-          <Textarea
-            id="notes"
-            name="notes"
-            maxLength={2000}
-            aria-describedby={fieldDescribedBy('notes', t('clientNotesHint'))}
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-          />
-        </Field>
-
-        {error ? (
-          <Notice
-            variant="error"
-            className="md:col-span-2"
-            onDismiss={() => setError(null)}
-          >
-            {error}
-          </Notice>
-        ) : null}
-
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end md:col-span-2">
-          <Button variant="ghost" onClick={onCancel}>
-            {t('cancel')}
-          </Button>
-          <Button
-            type="submit"
-            loading={createClientMutation.isPending}
-            loadingLabel={t('savingClient')}
-          >
-            {t('saveClient')}
-          </Button>
-        </div>
-      </form>
+      <div className="mt-4">
+        <ClientForm
+          idPrefix="new-client"
+          onCancel={onCancel}
+          onSaved={onCreated}
+        />
+      </div>
     </section>
   )
 }

@@ -1,11 +1,16 @@
 import { clearSession, readSession, writeSession } from '#/auth/auth-storage'
-import { normalizeRun } from './normalize'
+import { normalizeDocument, normalizeRun, normalizeUpload } from './normalize'
 import type {
   AuthSession,
   ClientDetail,
+  ClientPayload,
   ClientSummary,
-  Upload,
+  DocumentBulkUpdate,
+  DocumentDto,
+  DocumentPatch,
   GenerationRun,
+  RentaCatalog,
+  Upload,
 } from './api-types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5184'
@@ -190,9 +195,15 @@ export const clientsApi = {
 
   get: (clientId: string) => request<ClientDetail>(`/api/clients/${clientId}`),
 
-  create: (payload: { name: string; taxId: string; notes?: string }) =>
+  create: (payload: ClientPayload) =>
     request<ClientDetail>('/api/clients', {
       method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  update: (clientId: string, payload: ClientPayload) =>
+    request<ClientDetail>(`/api/clients/${clientId}`, {
+      method: 'PUT',
       body: JSON.stringify(payload),
     }),
 
@@ -219,7 +230,9 @@ export const clientsApi = {
 
 export const uploadsApi = {
   list: (clientId: string, periodId: string) =>
-    request<Upload[]>(`/api/clients/${clientId}/periods/${periodId}/uploads`),
+    request<Upload[]>(
+      `/api/clients/${clientId}/periods/${periodId}/uploads`,
+    ).then((uploads) => uploads.map(normalizeUpload)),
 
   create: (
     clientId: string,
@@ -236,8 +249,15 @@ export const uploadsApi = {
         method: 'POST',
         body,
       },
-    )
+    ).then(normalizeUpload)
   },
+
+  /** Reads the file again; the API replaces the upload's documents. */
+  reextract: (clientId: string, periodId: string, uploadId: string) =>
+    request<Upload | undefined>(
+      `/api/clients/${clientId}/periods/${periodId}/uploads/${uploadId}/reextract`,
+      { method: 'POST' },
+    ).then((upload) => (upload ? normalizeUpload(upload) : undefined)),
 
   remove: (clientId: string, periodId: string, uploadId: string) =>
     request<void>(
@@ -287,4 +307,39 @@ export const runsApi = {
       `/api/clients/${clientId}/periods/${periodId}/runs`,
       { method: 'POST' },
     ).then(normalizeRun),
+}
+
+const documentsPath = (clientId: string, periodId: string) =>
+  `/api/clients/${clientId}/periods/${periodId}/documents`
+
+export const documentsApi = {
+  list: (clientId: string, periodId: string) =>
+    request<DocumentDto[]>(documentsPath(clientId, periodId)).then((items) =>
+      items.map(normalizeDocument),
+    ),
+
+  update: (
+    clientId: string,
+    periodId: string,
+    documentId: string,
+    patch: DocumentPatch,
+  ) =>
+    request<DocumentDto | undefined>(
+      `${documentsPath(clientId, periodId)}/${documentId}`,
+      { method: 'PATCH', body: JSON.stringify(patch) },
+    ).then((item) => (item ? normalizeDocument(item) : undefined)),
+
+  bulkUpdate: (
+    clientId: string,
+    periodId: string,
+    update: DocumentBulkUpdate,
+  ) =>
+    request<unknown>(`${documentsPath(clientId, periodId)}/bulk`, {
+      method: 'POST',
+      body: JSON.stringify(update),
+    }).then(() => undefined),
+}
+
+export const catalogsApi = {
+  renta: () => request<RentaCatalog>('/api/catalogs/renta'),
 }

@@ -49,3 +49,36 @@ export function detectSourceFileKind(fileName: string): SourceFileKind | null {
 export function pluralize(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`
 }
+
+/** Decimal string ("48.14") to integer cents, so sums never drift. */
+export function toCents(value: string | null | undefined): number {
+  if (!value) return 0
+  const match = /^\s*(-)?(\d*)(?:\.(\d*))?\s*$/.exec(value)
+  if (!match) return 0
+  const [, sign, whole = '', fraction = ''] = match
+  const cents =
+    Number(whole || '0') * 100 + Number((fraction + '00').slice(0, 2))
+  return sign ? -cents : cents
+}
+
+const money = new Intl.NumberFormat('es-SV', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+export function formatCents(cents: number) {
+  return money.format(cents / 100)
+}
+
+export function formatMoney(value: string | null | undefined) {
+  return formatCents(toCents(value))
+}
+
+/** YYYY-MM-DD as DD/MM/YYYY without going through time zones. */
+export function formatIsoDate(value: string | null | undefined) {
+  if (!value) return ''
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value
+}

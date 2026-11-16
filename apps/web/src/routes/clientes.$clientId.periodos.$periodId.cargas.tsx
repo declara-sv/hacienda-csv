@@ -1,6 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { RentaDefaultsHint } from '#/components/clients/RentaDefaultsHint'
 import { PeriodDocuments } from '#/components/uploads/PeriodDocuments'
+import { buttonClasses } from '#/components/ui/Button'
 import { Breadcrumb } from '#/components/ui/Breadcrumb'
 import { PageHeader } from '#/components/ui/PageHeader'
 import { useI18n } from '#/i18n/I18nProvider'
@@ -46,11 +48,34 @@ function UploadsPage() {
         description={t('uploadsIntro')}
       />
 
+      {client ? (
+        <RentaDefaultsHint
+          client={client}
+          action={
+            <Link
+              to="/clientes/$clientId"
+              params={{ clientId }}
+              className={buttonClasses('secondary', 'sm')}
+            >
+              {t('rentaRequiredAction')}
+            </Link>
+          }
+        />
+      ) : null}
+
       {/* Keyed so the local upload queue and notices never cross periods. */}
       <PeriodDocuments
         key={`${clientId}:${periodId}`}
         clientId={clientId}
         periodId={periodId}
+        clientDefaults={
+          client
+            ? {
+                tipoOperacion: client.defaultTipoOperacion,
+                tipoIngreso: client.defaultTipoIngreso,
+              }
+            : null
+        }
       />
     </div>
   )

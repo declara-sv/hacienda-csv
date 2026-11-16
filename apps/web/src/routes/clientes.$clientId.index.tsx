@@ -1,7 +1,15 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, CalendarDays, ChevronDown, Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import {
+  ArrowRight,
+  CalendarDays,
+  ChevronDown,
+  Pencil,
+  Plus,
+} from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { ClientForm } from '#/components/clients/ClientForm'
+import { RentaDefaultsHint } from '#/components/clients/RentaDefaultsHint'
 import { Breadcrumb } from '#/components/ui/Breadcrumb'
 import { Button } from '#/components/ui/Button'
 import { EmptyState } from '#/components/ui/EmptyState'
@@ -18,6 +26,7 @@ import { PageSkeleton } from '#/components/ui/Skeleton'
 import { useI18n } from '#/i18n/I18nProvider'
 import { ApiError, clientsApi } from '#/lib/api-client'
 import { MONTHS_ES, formatDateTime, formatPeriod } from '#/lib/format'
+import { rentaLabel, useRentaCatalog } from '#/lib/renta'
 import type { ClientDetail } from '#/lib/api-types'
 import type { CSSProperties } from 'react'
 
@@ -36,6 +45,16 @@ function ClientDetailPage() {
   })
 
   const client = clientQuery.data
+  const [editing, setEditing] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const editTriggerRef = useRef<HTMLButtonElement>(null)
+
+  const closeEditor = (didSave: boolean) => {
+    setEditing(false)
+    setSaved(didSave)
+    // The form unmounts; keep keyboard users on the button that opened it.
+    requestAnimationFrame(() => editTriggerRef.current?.focus())
+  }
 
   return (
     <div className="space-y-8">
@@ -62,7 +81,68 @@ function ClientDetailPage() {
             title={client.name}
             meta={<span className="tabular-nums">{client.taxId}</span>}
             description={client.notes ?? undefined}
+            actions={
+              <Button
+                ref={editTriggerRef}
+                variant={editing ? 'secondary' : 'primary'}
+                icon={<Pencil className="size-4" strokeWidth={2} />}
+                aria-expanded={editing}
+                aria-controls="client-fiscal"
+                onClick={() => {
+                  setSaved(false)
+                  setEditing((value) => !value)
+                }}
+              >
+                {t('editClient')}
+              </Button>
+            }
           />
+
+          {saved ? (
+            <Notice variant="success" onDismiss={() => setSaved(false)}>
+              {t('clientUpdated')}
+            </Notice>
+          ) : null}
+
+          {!editing ? (
+            <RentaDefaultsHint
+              client={client}
+              action={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setEditing(true)}
+                >
+                  {t('rentaRequiredAction')}
+                </Button>
+              }
+            />
+          ) : null}
+
+          <section
+            id="client-fiscal"
+            aria-labelledby="client-fiscal-heading"
+            className="rounded-container border border-line bg-surface-raised p-5 sm:p-6"
+          >
+            <h2
+              id="client-fiscal-heading"
+              className="text-lg font-semibold text-ink"
+            >
+              {editing ? t('editClientTitle') : t('clientFiscalTitle')}
+            </h2>
+            <div className="mt-4">
+              {editing ? (
+                <ClientForm
+                  client={client}
+                  idPrefix="edit-client"
+                  onCancel={() => closeEditor(false)}
+                  onSaved={() => closeEditor(true)}
+                />
+              ) : (
+                <ClientFiscalData client={client} />
+              )}
+            </div>
+          </section>
 
           <Section title={t('filingPeriods')} description={t('periodsIntro')}>
             <PeriodsPanel client={client} />
@@ -72,6 +152,57 @@ function ClientDetailPage() {
         </>
       ) : null}
     </div>
+  )
+}
+
+function ClientFiscalData({ client }: { client: ClientDetail }) {
+  const { t } = useI18n()
+  const catalogQuery = useRentaCatalog()
+  const missing = (
+    <span className="text-ink-muted">{t('clientValueMissing')}</span>
+  )
+  const items: Array<{ label: string; value: React.ReactNode }> = [
+    {
+      label: t('clientNit'),
+      value: client.nit ? (
+        <span className="tabular-nums">{client.nit}</span>
+      ) : (
+        missing
+      ),
+    },
+    {
+      label: t('clientNrc'),
+      value: client.nrc ? (
+        <span className="tabular-nums">{client.nrc}</span>
+      ) : (
+        missing
+      ),
+    },
+    {
+      label: t('clientDefaultTipoOperacion'),
+      value: client.defaultTipoOperacion
+        ? rentaLabel(
+            catalogQuery.data?.tipoOperacion,
+            client.defaultTipoOperacion,
+          )
+        : missing,
+    },
+    {
+      label: t('clientDefaultTipoIngreso'),
+      value: client.defaultTipoIngreso
+        ? rentaLabel(catalogQuery.data?.tipoIngreso, client.defaultTipoIngreso)
+        : missing,
+    },
+  ]
+  return (
+    <dl className="grid gap-4 sm:grid-cols-2">
+      {items.map((item) => (
+        <div key={item.label} className="space-y-0.5">
+          <dt className="text-sm font-semibold text-ink">{item.label}</dt>
+          <dd className="text-sm text-ink">{item.value}</dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 

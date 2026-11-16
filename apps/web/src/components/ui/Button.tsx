@@ -1,6 +1,6 @@
 import { Loader2 } from 'lucide-react'
 import { cn } from '#/lib/cn'
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost'
 export type ButtonSize = 'md' | 'sm'
@@ -34,6 +34,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   loading?: boolean
   loadingLabel?: string
   icon?: ReactNode
+  ref?: Ref<HTMLButtonElement>
 }
 
 export function Button({
