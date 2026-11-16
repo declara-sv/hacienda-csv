@@ -1,0 +1,45 @@
+[project]
+name = "hacienda-api"
+version = "0.1.0"
+description = "API de HaciendaCSV: extracción de DTE y generación de anexos F-07"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy>=2.0.36",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.14",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.6",
+    "email-validator>=2.2",
+    "pyjwt>=2.10",
+    "pwdlib[argon2]>=0.2.1",
+    "python-multipart>=0.0.18",
+    "pdfplumber>=0.11.4",
+    "anthropic>=0.75",
+    "azure-storage-blob>=12.24",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.28",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = false
+ignore_missing_imports = true
