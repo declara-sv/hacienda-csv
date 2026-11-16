@@ -28,7 +28,6 @@ apps/
       worker.py         # extracción de uploads + generation runs
     alembic/            # migraciones
     tests/
-    Dockerfile
 docker-compose.yml      # PostgreSQL local opcional
 ```
 
@@ -53,7 +52,7 @@ Cada ajuste de `app/config.py` se lee de la variable con su nombre en mayúscula
 
 | Variable | Default | Uso |
 |---|---|---|
-| `ENVIRONMENT` | `Development` | `Production` en Cloud Run |
+| `ENVIRONMENT` | `Development` | `Production` en el VPS |
 | `DATABASE_URL` | `postgresql+psycopg://postgres:postgres@localhost:5432/accounting_dev` | API y Alembic |
 | `CLERK_ISSUER` | `https://exciting-gopher-5507.clerk.accounts.dev` | Instancia de Clerk (Frontend API URL); `iss` esperado |
 | `CLERK_JWKS_URL` | `{CLERK_ISSUER}/.well-known/jwks.json` | Solo si difiere del default |
@@ -248,157 +247,57 @@ Todos los recursos pertenecen a la cuenta del usuario (creada en su primera peti
 
 ## Despliegue
 
-- Frontend: Vercel (proyecto `apps/web`, build command `pnpm build`).
-- API: Google Cloud Run con GitHub Actions (`.github/workflows/deploy-api.yml`).
-- DB: Supabase/Neon PostgreSQL (`DATABASE_URL` con el driver `postgresql+psycopg://`).
+- Frontend: Vercel (proyecto `apps/web`).
+- API: VPS (Ubuntu) con systemd + nginx + certbot, desplegado por SSH con los scripts de `deploy/`.
+- Base de datos y archivos: Supabase (Postgres por el session pooler y Storage por S3).
 
-### Vercel (frontend) para evitar 404
+### Vercel (frontend)
 
-Configura el proyecto en Vercel así:
 1. **Root Directory**: `apps/web`
 2. **Build Command**: `pnpm build`
 3. **Install Command**: `pnpm install`
-4. **Output Directory**: vacío (no usar `dist`, TanStack Start + Nitro genera SSR)
+4. **Output Directory**: vacío (TanStack Start + Nitro genera SSR)
 
 Variables de entorno:
-1. `VITE_API_URL=<URL pública del API en Cloud Run>`
+1. `VITE_API_URL=https://<dominio del API>`
 2. `VITE_CLERK_PUBLISHABLE_KEY=<publishable key de Clerk>`
 3. `CLERK_PUBLISHABLE_KEY=<publishable key de Clerk>`
 4. `CLERK_SECRET_KEY=<secret key de Clerk>` (marcarla como sensible)
 5. `ENABLE_EXPERIMENTAL_COREPACK=1` (para que Vercel use pnpm 12 de `packageManager`; Node 26 se toma de `engines`)
 
-### CI y releases del API
+### API en el VPS
 
-`ci-api.yml` instala dependencias con `uv sync --locked` (falla si `uv.lock` no está al día), ejecuta
-`ruff check`, los tests contra un contenedor de servicio Postgres 16 y los contratos de los workflows
-en pushes de ramas y PRs. Un push a `main` **no despliega** el API. El frontend sigue con push-to-deploy
-en Vercel. Todos los jobs del API usan `blacksmith-2vcpu-ubuntu-2404`.
+El servidor comparte nginx con otros sitios; el API corre como servicio `hacienda-api` (usuario
+`hacienda`) en `127.0.0.1:8010`, con el código en `/opt/hacienda-api/releases/<fecha>-<commit>` y
+`/opt/hacienda-api/current` como enlace al release activo. El worker corre dentro del mismo proceso.
 
-#### Configuración inicial (antes del primer tag)
-
-1. Instalar la app de Blacksmith en la organización/repositorio y habilitar el runner.
-2. Mantener Artifact Registry y Cloud Run habilitados en GCP. La cuenta de despliegue
-   usada por WIF necesita permisos de push/lectura en Artifact Registry, deploy de
-   Cloud Run (incluido acceso público) y `iam.serviceAccounts.actAs` sobre la cuenta runtime.
-3. Permitir en WIF los refs `refs/tags/api-v*` del repositorio, además de `refs/heads/main`
-   para dispatch. Si la condición actual está limitada a `main`, los tags no autenticarán.
-   Restringir siempre al repositorio confiable; proteger los tags `api-v*` contra cambios/borrado.
-4. Crear los tres secretos siguientes en Secret Manager en `GCP_PROJECT_ID`, con una
-   versión `latest` habilitada. Otorgar `roles/secretmanager.secretAccessor` a la cuenta
-   **runtime** sobre cada secreto. La cuenta **de despliegue** necesita
-   `roles/secretmanager.viewer` sobre ellos para validar metadatos; el workflow no lee payloads.
-
-   | Variable en Cloud Run | Nombre del secreto |
-   |---|---|
-   | `DATABASE_URL` | `api-database-url` |
-   | `STORAGE_AZURE_BLOB_CONNECTION_STRING` | `api-storage-azure-blob-connection-string` |
-   | `ANTHROPIC_API_KEY` | `api-anthropic-api-key` |
-
-   Los tres son obligatorios. `DATABASE_URL` usa el formato
-   `postgresql+psycopg://usuario:clave@host:5432/base?sslmode=require` (codificar caracteres
-   especiales de la clave). Con storage Local, el secreto Azure puede tener un valor de marcador
-   (no se consume); AzureBlob es recomendado: el filesystem de Cloud Run es efímero. Sin IA de
-   respaldo, poner un marcador en `api-anthropic-api-key` y la variable `API_AI_EXTRACTION_ENABLED=false`.
-   `latest` se resuelve al arrancar cada instancia; una rotación aplica también a nuevos arranques
-   de revisiones anteriores. El secreto `api-jwt-signing-key` ya no se usa (la autenticación es con
-   Clerk) y puede borrarse después del primer deploy con Clerk.
-5. Copiar la **misma URL de la misma base** a `API_DATABASE_URL` en GitHub Secrets: solo la usa el
-   paso de migración, fuera de Cloud Run. Postgres debe ser alcanzable desde Blacksmith y la
-   conexión debe tener permisos DDL y TLS según el proveedor. No imprimir valores ni pasarlos como
-   expresiones inline de shell.
-6. Migrar desde el API .NET: el secreto GitHub `API_CONNECTION_STRING_POSTGRES` se reemplaza por
-   `API_DATABASE_URL` (formato URL, no cadena ADO.NET), y el secreto de Secret Manager
-   `api-connection-string-postgres` por `api-database-url`. Los anteriores ya no se usan y pueden
-   borrarse después del primer deploy. El nuevo deploy reemplaza el conjunto completo de env vars y
-   secretos de la revisión (se quitan las variables `ASPNETCORE_*`, `Jwt__*`, `Storage__*`).
-
-Variables de repositorio (Settings > Secrets and variables > Actions > Variables):
-- `GCP_PROJECT_ID`
-- `GCP_REGION` (ejemplo: `us-east1`)
-- `GAR_REPOSITORY`
-- `CLOUD_RUN_SERVICE`
-- `CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT` (opcional; default `cloud-run-runtime@PROJECT_ID.iam.gserviceaccount.com`)
-- `API_STORAGE_PROVIDER` (opcional, `AzureBlob` recomendado; default `Local`)
-- `API_AI_EXTRACTION_ENABLED` (opcional; default `true`)
-- `API_AI_EXTRACTION_MODEL` (opcional; default el de `app/config.py`)
-- `API_CLERK_ISSUER` (obligatoria; Frontend API URL de la instancia de Clerk, p. ej.
-  `https://exciting-gopher-5507.clerk.accounts.dev`)
-- `API_CLERK_AUTHORIZED_PARTIES` (opcional; lista JSON de orígenes de la web, p. ej.
-  `["https://app.tu-dominio.com"]`; default los de `localhost`, y `*.vercel.app` siempre se acepta
-  mientras `CORS_ALLOW_VERCEL_SUBDOMAINS` esté activo)
-
-Las variables del deploy no pueden contener `|` (es el separador que usa el workflow con `gcloud`).
-
-Secrets de repositorio:
-- `GCP_WORKLOAD_IDENTITY_PROVIDER`
-- `GCP_SERVICE_ACCOUNT`
-- `API_DATABASE_URL` (solo releases nuevos; no requerido para rollback)
-
-#### Publicar
-
-Primero integrar estos workflows a `main` y completar la configuración externa.
-Comprobar que **API CI está verde en el commit exacto** antes de crear el tag; esta
-comprobación es procedural, no un gate automático del workflow de deploy.
-
+Una sola vez:
 ```bash
-git checkout main && git pull --ff-only
-git tag api-v1.0.0
-git push origin api-v1.0.0
+ssh hacienda-vps 'bash -s' < deploy/setup-server.sh api.midominio.com   # usuario, uv, systemd, sitio nginx
+cp apps/api/.env.example apps/api/.env.production                       # completar valores de producción
+deploy/push-env.sh                                                      # copia el archivo a /opt/hacienda-api/shared/.env
+ssh hacienda-vps sudo certbot --nginx -d api.midominio.com              # HTTPS (el DNS ya debe apuntar al VPS)
 ```
 
-Solo se aceptan tags estables `api-vMAJOR.MINOR.PATCH`, sin ceros iniciales, prerelease
-ni metadata. Patch para fixes, minor para endpoints nuevos, major para cambios incompatibles.
-No mover ni reutilizar tags publicados. Conservar sus imágenes en Artifact Registry.
+`apps/api/.env.production` (ignorado por git) debe tener al menos: `ENVIRONMENT=Production`,
+`DATABASE_URL` (session pooler de Supabase, `...pooler.supabase.com:5432/postgres?sslmode=require`),
+`STORAGE_PROVIDER=S3` y sus `STORAGE_S3_*`, `CLERK_ISSUER`, `CLERK_AUTHORIZED_PARTIES` y
+`CORS_ALLOWED_ORIGINS` con el dominio de la web, y opcionalmente `ANTHROPIC_API_KEY`.
 
-El workflow valida tag/configuración, construye la imagen Linux amd64 (`apps/api/Dockerfile`) con
-cache de Blacksmith, resuelve su digest, aplica migraciones con `alembic upgrade head` **desde esa misma
-imagen** (`docker run` en el runner) y despliega por digest. Swagger está deshabilitado en producción.
-El servicio se despliega con `--no-cpu-throttling` y `--min-instances=1`: el worker corre dentro del
-proceso del API y necesita CPU fuera de las peticiones y al menos una instancia activa (esto tiene costo
-fijo). Un fallo de migración impide el nuevo deploy: la revisión anterior continúa sirviendo, aunque
-cambios de esquema ya aplicados pueden permanecer. Las migraciones deben ser compatibles con la revisión
-viva (estrategia expand/contract). No hay downgrade automático de esquema.
-
-Los releases se serializan con `cancel-in-progress: false` y `queue: max` (hasta 100
-pendientes). FIFO corresponde a la llegada a la cola, no garantiza orden de push de tags;
-para releases dependientes, esperar la finalización del anterior.
-
-#### Reintentar y rollback
-
-- Si un release falla al migrar o desplegar: corregir la causa y **re-ejecutar el workflow
-  original del push** para repetir migraciones pendientes antes de desplegar. No usar
-  dispatch para saltarse una migración fallida. No editar/recrear el tag; cambios de código
-  requieren un tag nuevo.
-- Rollback: Actions > Deploy API > Run workflow, seleccionar **main** como ref del
-  workflow e indicar el tag anterior que se desplegó con éxito. Por CLI:
-
-  ```bash
-  gh workflow run deploy-api.yml --ref main -f tag=api-v1.0.0
-  ```
-
-  Dispatch comprueba que el tag y su imagen existan, y despliega el digest existente:
-  **no construye ni ejecuta migraciones**. Una imagen inexistente aborta el workflow.
-  Usar únicamente releases que ya migraron con éxito. El rollback de aplicación conserva
-  el esquema actual y las referencias `latest` a secretos: verificar compatibilidad.
-  Un rollback de esquema requiere una migración nueva y un tag nuevo.
-
-#### Verificación local
-
+Cada despliegue:
 ```bash
-cd apps/api && uv sync --locked && uv run ruff check . && uv run pytest && cd ../..
-python3 -m venv /tmp/hacienda-workflow-tests
-/tmp/hacienda-workflow-tests/bin/pip install -r .github/tests/requirements.txt
-/tmp/hacienda-workflow-tests/bin/python -m unittest discover -s .github/tests -v
-actionlint
-git diff --check
+deploy/deploy-api.sh              # publica el commit actual: copia el código, instala dependencias,
+                                  # aplica migraciones, cambia `current`, reinicia y revisa /health
+deploy/deploy-api.sh v1.2.0       # publica un tag o commit específico
+deploy/deploy-api.sh --rollback   # vuelve al release anterior (no revierte migraciones)
 ```
 
-`actionlint` 1.7.12 no reconoce aún `concurrency.queue`: `.github/actionlint.yaml`
-ignora únicamente ese diagnóstico en deploy; los tests comprueban su valor `max`.
+Diagnóstico: `ssh hacienda-vps sudo journalctl -u hacienda-api -n 100 -f`.
 
-Referencias: [Blacksmith builder](https://github.com/useblacksmith/setup-docker-builder),
-[concurrencia de GitHub](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency),
-[uv en Docker](https://docs.astral.sh/uv/guides/integration/docker/),
-[Alembic](https://alembic.sqlalchemy.org/en/latest/tutorial.html),
-[CPU siempre asignada en Cloud Run](https://cloud.google.com/run/docs/configuring/billing-settings),
-[opciones de Cloud Run](https://docs.cloud.google.com/sdk/gcloud/reference/run/deploy).
+Las migraciones deben ser compatibles con el release anterior (expand/contract) para que el rollback
+funcione. En Supabase, mantener apagado el Data API: el API propio es el único acceso a los datos.
+
+### CI
+
+`ci-api.yml` corre `ruff` y `pytest` (con un Postgres de servicio) en cada push y PR que toque
+`apps/api`. No despliega.

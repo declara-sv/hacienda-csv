@@ -19,6 +19,8 @@ htmlcov/
 # Local data
 apps/api/App_Data/
 apps/api/.env
+apps/api/.env.*
+!apps/api/.env.example
 apps/api/tests/fixtures/private/
 apps/web/.env
 supabase/.temp/
