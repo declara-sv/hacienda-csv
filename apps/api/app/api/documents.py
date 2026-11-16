@@ -4,9 +4,8 @@ import uuid
 
 from fastapi import APIRouter
 
-from app.api.deps import DbSession
+from app.api.deps import CurrentAccount, DbSession
 from app.api.schemas import DocumentBulkRequest, DocumentDto, DocumentPatchRequest
-from app.security import CurrentUserId
 from app.services import documents as service
 
 router = APIRouter(prefix="/api/clients/{client_id}/periods/{period_id}/documents", tags=["documents"])
@@ -14,9 +13,9 @@ router = APIRouter(prefix="/api/clients/{client_id}/periods/{period_id}/document
 
 @router.get("")
 def list_documents(
-    client_id: uuid.UUID, period_id: uuid.UUID, session: DbSession, user_id: CurrentUserId
+    client_id: uuid.UUID, period_id: uuid.UUID, session: DbSession, account: CurrentAccount
 ) -> list[DocumentDto]:
-    return service.list_documents(session, client_id, period_id, user_id)
+    return service.list_documents(session, client_id, period_id, account)
 
 
 @router.post("/bulk")
@@ -25,10 +24,10 @@ def bulk_update(
     period_id: uuid.UUID,
     request: DocumentBulkRequest,
     session: DbSession,
-    user_id: CurrentUserId,
+    account: CurrentAccount,
 ) -> list[DocumentDto]:
     """Applies the changes to the given documents and returns the whole period list."""
-    return service.bulk_update(session, client_id, period_id, user_id, request)
+    return service.bulk_update(session, client_id, period_id, account, request)
 
 
 @router.patch("/{document_id}")
@@ -38,6 +37,6 @@ def update_document(
     document_id: uuid.UUID,
     request: DocumentPatchRequest,
     session: DbSession,
-    user_id: CurrentUserId,
+    account: CurrentAccount,
 ) -> DocumentDto:
-    return service.update_document(session, client_id, period_id, document_id, user_id, request)
+    return service.update_document(session, client_id, period_id, document_id, account, request)

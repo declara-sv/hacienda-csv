@@ -18,6 +18,7 @@ from app.models import (
     RunStatus,
     Upload,
 )
+from app.services.accounts import AccountContext
 from app.services.documents import recompute_period
 from app.services.ownership import owned_period
 from app.services.uploads import ACTIVE_RUN_STATUSES
@@ -64,9 +65,9 @@ def to_dto(run: GenerationRun) -> GenerationRunDto:
 
 
 def create_run(
-    session: Session, client_id: uuid.UUID, period_id: uuid.UUID, user_id: uuid.UUID
+    session: Session, client_id: uuid.UUID, period_id: uuid.UUID, account: AccountContext
 ) -> GenerationRunDto:
-    client, period = owned_period(session, client_id, period_id, user_id)
+    client, period = owned_period(session, client_id, period_id, account.account_id)
 
     uploads = list(
         session.scalars(
@@ -117,7 +118,7 @@ def create_run(
     run = GenerationRun(
         client_id=client_id,
         filing_period_id=period_id,
-        requested_by_user_id=user_id,
+        requested_by_user_id=account.user_id,
         version=(max_version or 0) + 1,
         status=RunStatus.PENDING.value,
         issues=[],
@@ -148,9 +149,9 @@ def _runs_query():
 
 
 def list_runs(
-    session: Session, client_id: uuid.UUID, period_id: uuid.UUID, user_id: uuid.UUID
+    session: Session, client_id: uuid.UUID, period_id: uuid.UUID, account: AccountContext
 ) -> list[GenerationRunDto]:
-    owned_period(session, client_id, period_id, user_id)
+    owned_period(session, client_id, period_id, account.account_id)
     runs = session.scalars(
         _runs_query()
         .where(GenerationRun.filing_period_id == period_id)
@@ -160,9 +161,9 @@ def list_runs(
 
 
 def get_run(
-    session: Session, client_id: uuid.UUID, period_id: uuid.UUID, run_id: uuid.UUID, user_id: uuid.UUID
+    session: Session, client_id: uuid.UUID, period_id: uuid.UUID, run_id: uuid.UUID, account: AccountContext
 ) -> GenerationRunDto:
-    owned_period(session, client_id, period_id, user_id)
+    owned_period(session, client_id, period_id, account.account_id)
     run = session.scalar(
         _runs_query().where(GenerationRun.id == run_id, GenerationRun.filing_period_id == period_id)
     )

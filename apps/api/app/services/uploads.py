@@ -22,9 +22,12 @@ from app.models import (
     RunStatus,
     Upload,
 )
+from app.services.accounts import AccountContext
 from app.services.documents import recompute_period
 from app.services.ownership import owned_period
 from app.storage import FileStorage, StoredFileReference
+from app.usage import recorder as usage
+from app.usage.recorder import UsageScope
 
 logger = logging.getLogger(__name__)
 
@@ -102,9 +105,9 @@ def _single_dto(session: Session, upload: Upload) -> UploadDto:
 
 
 def list_uploads(
-    session: Session, client_id: uuid.UUID, period_id: uuid.UUID, user_id: uuid.UUID
+    session: Session, client_id: uuid.UUID, period_id: uuid.UUID, account: AccountContext
 ) -> list[UploadDto]:
-    owned_period(session, client_id, period_id, user_id)
+    owned_period(session, client_id, period_id, account.account_id)
     uploads = list(
         session.scalars(
             select(Upload)
@@ -124,13 +127,13 @@ def create_upload(
     *,
     client_id: uuid.UUID,
     period_id: uuid.UUID,
-    user_id: uuid.UUID,
+    account: AccountContext,
     file_name: str,
     content_type: str | None,
     content: bytes,
     source_file_kind: str,
 ) -> UploadDto:
-    _, period = owned_period(session, client_id, period_id, user_id)
+    client, period = owned_period(session, client_id, period_id, account.account_id)
 
     if source_file_kind not in SOURCE_FILE_KINDS:
         raise validation_error("sourceFileKind", "El tipo debe ser Excel o PDF.")
@@ -150,9 +153,10 @@ def create_upload(
     stored = storage.save(settings.storage_upload_container, path, content, content_type)
 
     upload = Upload(
+        id=uuid.uuid4(),
         client_id=client_id,
         filing_period_id=period_id,
-        uploaded_by_user_id=user_id,
+        uploaded_by_user_id=account.user_id,
         original_file_name=file_name[:260],
         content_type=content_type[:120],
         source_file_kind=source_file_kind,
@@ -164,14 +168,24 @@ def create_upload(
         extraction_status=ExtractionStatus.PENDING.value,
     )
     session.add(upload)
+    usage.upload_stored(
+        session,
+        UsageScope.for_client(client, account.user_id, filing_period_id=period_id, upload_id=upload.id),
+        size_bytes=upload.size_bytes,
+        source_file_kind=source_file_kind,
+    )
     session.commit()
     return to_dto(upload, included=False, count=0)
 
 
 def _owned_upload(
-    session: Session, client_id: uuid.UUID, period_id: uuid.UUID, upload_id: uuid.UUID, user_id: uuid.UUID
+    session: Session,
+    client_id: uuid.UUID,
+    period_id: uuid.UUID,
+    upload_id: uuid.UUID,
+    account: AccountContext,
 ):
-    client, period = owned_period(session, client_id, period_id, user_id)
+    client, period = owned_period(session, client_id, period_id, account.account_id)
     upload = session.scalar(
         select(Upload).where(
             Upload.id == upload_id, Upload.filing_period_id == period_id, Upload.client_id == client_id
@@ -202,9 +216,9 @@ def delete_upload(
     client_id: uuid.UUID,
     period_id: uuid.UUID,
     upload_id: uuid.UUID,
-    user_id: uuid.UUID,
+    account: AccountContext,
 ) -> None:
-    client, period, upload = _owned_upload(session, client_id, period_id, upload_id, user_id)
+    client, period, upload = _owned_upload(session, client_id, period_id, upload_id, account)
     if _referenced_by_active_run(session, upload_id):
         raise conflict(ACTIVE_RUN_CONFLICT)
 
@@ -227,9 +241,9 @@ def reextract_upload(
     client_id: uuid.UUID,
     period_id: uuid.UUID,
     upload_id: uuid.UUID,
-    user_id: uuid.UUID,
+    account: AccountContext,
 ) -> UploadDto:
-    client, period, upload = _owned_upload(session, client_id, period_id, upload_id, user_id)
+    client, period, upload = _owned_upload(session, client_id, period_id, upload_id, account)
     if _referenced_by_active_run(session, upload_id):
         raise conflict(ACTIVE_RUN_CONFLICT)
 
@@ -250,7 +264,7 @@ def reextract_upload(
     session.execute(delete(DteDocument).where(DteDocument.upload_id == upload_id))
     session.flush()
     session.expire_all()
-    client, period, upload = _owned_upload(session, client_id, period_id, upload_id, user_id)
+    client, period, upload = _owned_upload(session, client_id, period_id, upload_id, account)
     recompute_period(session, period, client)
     session.commit()
     return _single_dto(session, upload)

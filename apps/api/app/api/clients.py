@@ -6,7 +6,7 @@ from fastapi import APIRouter, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps import DbSession
+from app.api.deps import CurrentAccount, DbSession
 from app.api.errors import not_found
 from app.api.schemas import (
     ClientConfigDto,
@@ -16,7 +16,6 @@ from app.api.schemas import (
     FilingPeriodSummaryDto,
 )
 from app.models import Client, ClientConfig, FilingPeriod
-from app.security import CurrentUserId
 from app.services.documents import check_renta_code, recompute_client
 from app.services.ownership import owned_client
 
@@ -50,11 +49,11 @@ def detail_dto(client: Client) -> ClientDetailDto:
     )
 
 
-def _load_detail(session: Session, client_id: uuid.UUID, user_id: uuid.UUID) -> Client:
+def _load_detail(session: Session, client_id: uuid.UUID, account_id: uuid.UUID) -> Client:
     client = session.scalar(
         select(Client)
         .options(selectinload(Client.configurations), selectinload(Client.filing_periods))
-        .where(Client.id == client_id, Client.owner_user_id == user_id)
+        .where(Client.id == client_id, Client.account_id == account_id)
         .execution_options(populate_existing=True)
     )
     if client is None:
@@ -68,12 +67,12 @@ def _validate_codes(request: ClientRequest) -> None:
 
 
 @router.get("")
-def list_clients(session: DbSession, user_id: CurrentUserId) -> list[ClientSummaryDto]:
+def list_clients(session: DbSession, account: CurrentAccount) -> list[ClientSummaryDto]:
     periods_count = (
         select(func.count(FilingPeriod.id)).where(FilingPeriod.client_id == Client.id).scalar_subquery()
     )
     rows = session.execute(
-        select(Client, periods_count).where(Client.owner_user_id == user_id).order_by(Client.name)
+        select(Client, periods_count).where(Client.account_id == account.account_id).order_by(Client.name)
     )
     return [
         ClientSummaryDto(
@@ -93,11 +92,11 @@ def list_clients(session: DbSession, user_id: CurrentUserId) -> list[ClientSumma
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_client(
-    request: ClientRequest, session: DbSession, user_id: CurrentUserId, response: Response
+    request: ClientRequest, session: DbSession, account: CurrentAccount, response: Response
 ) -> ClientDetailDto:
     _validate_codes(request)
     client = Client(
-        owner_user_id=user_id,
+        account_id=account.account_id,
         name=request.name,
         tax_id=request.tax_id,
         notes=request.notes,
@@ -110,19 +109,19 @@ def create_client(
     session.add(client)
     session.commit()
     response.headers["Location"] = f"/api/clients/{client.id}"
-    return detail_dto(_load_detail(session, client.id, user_id))
+    return detail_dto(_load_detail(session, client.id, account.account_id))
 
 
 @router.get("/{client_id}")
-def get_client(client_id: uuid.UUID, session: DbSession, user_id: CurrentUserId) -> ClientDetailDto:
-    return detail_dto(_load_detail(session, client_id, user_id))
+def get_client(client_id: uuid.UUID, session: DbSession, account: CurrentAccount) -> ClientDetailDto:
+    return detail_dto(_load_detail(session, client_id, account.account_id))
 
 
 @router.put("/{client_id}")
 def update_client(
-    client_id: uuid.UUID, request: ClientRequest, session: DbSession, user_id: CurrentUserId
+    client_id: uuid.UUID, request: ClientRequest, session: DbSession, account: CurrentAccount
 ) -> ClientDetailDto:
-    client = owned_client(session, client_id, user_id)
+    client = owned_client(session, client_id, account.account_id)
     _validate_codes(request)
 
     client.name = request.name
@@ -135,12 +134,12 @@ def update_client(
     session.flush()
     recompute_client(session, client)
     session.commit()
-    return detail_dto(_load_detail(session, client_id, user_id))
+    return detail_dto(_load_detail(session, client_id, account.account_id))
 
 
 @router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_client(client_id: uuid.UUID, session: DbSession, user_id: CurrentUserId) -> Response:
-    client = owned_client(session, client_id, user_id)
+def delete_client(client_id: uuid.UUID, session: DbSession, account: CurrentAccount) -> Response:
+    client = owned_client(session, client_id, account.account_id)
     session.delete(client)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

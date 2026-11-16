@@ -15,6 +15,7 @@ from app.api.schemas import DocumentBulkRequest, DocumentDto, DocumentPatchReque
 from app.domain import ClientProfile, DteRecord, Issue, IssueSeverity, ReviewedDocument
 from app.models import Client, DocumentStatus, DteDocument, FilingPeriod
 from app.services import integrations
+from app.services.accounts import AccountContext
 from app.services.ownership import owned_period
 
 logger = logging.getLogger(__name__)
@@ -266,9 +267,9 @@ def document_dto(doc: DteDocument, client: Client) -> DocumentDto:
 
 
 def list_documents(
-    session: Session, client_id: uuid.UUID, period_id: uuid.UUID, user_id: uuid.UUID
+    session: Session, client_id: uuid.UUID, period_id: uuid.UUID, account: AccountContext
 ) -> list[DocumentDto]:
-    client, period = owned_period(session, client_id, period_id, user_id)
+    client, period = owned_period(session, client_id, period_id, account.account_id)
     docs = recompute_period(session, period, client)
     session.commit()
     return [document_dto(d, client) for d in docs]
@@ -279,10 +280,10 @@ def update_document(
     client_id: uuid.UUID,
     period_id: uuid.UUID,
     document_id: uuid.UUID,
-    user_id: uuid.UUID,
+    account: AccountContext,
     request: DocumentPatchRequest,
 ) -> DocumentDto:
-    client, period = owned_period(session, client_id, period_id, user_id)
+    client, period = owned_period(session, client_id, period_id, account.account_id)
     doc = session.scalar(
         select(DteDocument).where(DteDocument.id == document_id, DteDocument.filing_period_id == period.id)
     )
@@ -328,10 +329,10 @@ def bulk_update(
     session: Session,
     client_id: uuid.UUID,
     period_id: uuid.UUID,
-    user_id: uuid.UUID,
+    account: AccountContext,
     request: DocumentBulkRequest,
 ) -> list[DocumentDto]:
-    client, period = owned_period(session, client_id, period_id, user_id)
+    client, period = owned_period(session, client_id, period_id, account.account_id)
     changes = request.model_dump(exclude_unset=True, exclude={"document_ids"})
     if not changes:
         raise ApiError(400, VALIDATION_TITLE, {"changes": ["Indique al menos un cambio."]})

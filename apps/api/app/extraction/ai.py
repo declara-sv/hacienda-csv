@@ -6,23 +6,39 @@ The client is injected so tests can use a fake; nothing here runs at import time
 from __future__ import annotations
 
 import base64
+import time
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import anthropic
 import pydantic
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain import DteRecord
+from app.domain import AiCallOutcome, AiUsage, DteRecord
 
 from .mh_parser import parse_amount, parse_date, parse_time
 
 
+@dataclass
+class AiExtractorOutput:
+    records: list[DteRecord]
+    usage: AiUsage | None = None
+
+
 class AiExtractor(Protocol):
-    def extract(self, pdf_bytes: bytes) -> list[DteRecord]: ...
+    def extract(self, pdf_bytes: bytes) -> AiExtractorOutput: ...
 
 
 class AiExtractionError(Exception):
-    """The AI extractor could not produce a result (API error, refusal, truncated or invalid output)."""
+    """The AI extractor could not produce a result (API error, refusal, truncated or invalid output).
+
+    `usage` describes the call that failed. It carries token counts whenever a response was received,
+    because those tokens are billed even though the output is unusable.
+    """
+
+    def __init__(self, message: str, usage: AiUsage | None = None) -> None:
+        super().__init__(message)
+        self.usage = usage
 
 
 class AiDocument(BaseModel):
@@ -137,15 +153,53 @@ def to_record(doc: AiDocument) -> DteRecord:
     )
 
 
+_OUTPUT_CONFIG = {"format": {"type": "json_schema", "schema": anthropic.transform_schema(AiExtraction)}}
+
+
+def _token(usage: Any, name: str) -> int:
+    value = getattr(usage, name, None) if usage is not None else None
+    return int(value) if isinstance(value, int) else 0
+
+
+def _response_text(response: Any) -> str | None:
+    for block in getattr(response, "content", None) or []:
+        if getattr(block, "type", None) == "text":
+            return getattr(block, "text", None)
+    return None
+
+
 class ClaudeAiExtractor:
-    """AiExtractor backed by the Anthropic Messages API with structured output."""
+    """AiExtractor backed by the Anthropic Messages API with structured output.
+
+    Uses `messages.create` and validates the JSON here (instead of `messages.parse`) so token usage
+    is available even when the output is a refusal or does not match the schema.
+    """
 
     def __init__(self, client: Any, model: str, *, max_tokens: int = 16000) -> None:
         self._client = client
         self._model = model
         self._max_tokens = max_tokens
 
-    def extract(self, pdf_bytes: bytes) -> list[DteRecord]:
+    @property
+    def model(self) -> str:
+        return self._model
+
+    def _usage(self, response: Any, started: float, outcome: AiCallOutcome) -> AiUsage:
+        duration_ms = int((time.monotonic() - started) * 1000)
+        if response is None:
+            return AiUsage(model=self._model, duration_ms=duration_ms, outcome=outcome)
+        usage = getattr(response, "usage", None)
+        return AiUsage(
+            model=self._model,
+            input_tokens=_token(usage, "input_tokens"),
+            output_tokens=_token(usage, "output_tokens"),
+            cache_read_tokens=_token(usage, "cache_read_input_tokens"),
+            cache_creation_tokens=_token(usage, "cache_creation_input_tokens"),
+            duration_ms=duration_ms,
+            outcome=outcome,
+        )
+
+    def extract(self, pdf_bytes: bytes) -> AiExtractorOutput:
         data = base64.standard_b64encode(pdf_bytes).decode("ascii")
         messages = [
             {
@@ -159,22 +213,35 @@ class ClaudeAiExtractor:
                 ],
             }
         ]
+        started = time.monotonic()
         try:
-            response = self._client.messages.parse(
+            response = self._client.messages.create(
                 model=self._model,
                 max_tokens=self._max_tokens,
                 messages=messages,
-                output_format=AiExtraction,
+                output_config=_OUTPUT_CONFIG,
             )
         except anthropic.APIStatusError as exc:
-            raise AiExtractionError(f"Error del servicio de IA (HTTP {exc.status_code}).") from exc
+            message = f"Error del servicio de IA (HTTP {exc.status_code})."
+            raise AiExtractionError(message, self._usage(None, started, AiCallOutcome.FAILED)) from exc
         except anthropic.APIConnectionError as exc:
-            raise AiExtractionError("No se pudo conectar con el servicio de IA.") from exc
+            message = "No se pudo conectar con el servicio de IA."
+            raise AiExtractionError(message, self._usage(None, started, AiCallOutcome.FAILED)) from exc
         except anthropic.AnthropicError as exc:
-            raise AiExtractionError(f"Error del servicio de IA ({type(exc).__name__}).") from exc
-        except (pydantic.ValidationError, ValueError) as exc:
-            raise AiExtractionError("La IA devolvió una respuesta con formato inválido.") from exc
+            message = f"Error del servicio de IA ({type(exc).__name__})."
+            raise AiExtractionError(message, self._usage(None, started, AiCallOutcome.FAILED)) from exc
+        except ValueError as exc:  # e.g. an undecodable response body
+            message = "La IA devolvió una respuesta con formato inválido."
+            raise AiExtractionError(message, self._usage(None, started, AiCallOutcome.FAILED)) from exc
 
+        try:
+            records = self._records(response)
+        except AiExtractionError as exc:
+            exc.usage = self._usage(response, started, AiCallOutcome.FAILED)
+            raise
+        return AiExtractorOutput(records, self._usage(response, started, AiCallOutcome.USED))
+
+    def _records(self, response: Any) -> list[DteRecord]:
         stop_reason = getattr(response, "stop_reason", None)
         if stop_reason == "refusal":
             raise AiExtractionError("La IA se negó a procesar el documento.")
@@ -183,9 +250,13 @@ class ClaudeAiExtractor:
         if stop_reason not in _OK_STOP_REASONS:
             raise AiExtractionError(f"La IA terminó de forma inesperada ({stop_reason}).")
 
-        parsed = getattr(response, "parsed_output", None)
-        if not isinstance(parsed, AiExtraction):
+        text = _response_text(response)
+        if not text:
             raise AiExtractionError("La IA no devolvió datos estructurados.")
+        try:
+            parsed = AiExtraction.model_validate_json(text)
+        except (pydantic.ValidationError, ValueError) as exc:
+            raise AiExtractionError("La IA devolvió una respuesta con formato inválido.") from exc
         return [to_record(doc) for doc in parsed.documents]
 
 

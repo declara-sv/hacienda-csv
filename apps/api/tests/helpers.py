@@ -37,9 +37,22 @@ def record(**overrides: Any) -> dict[str, Any]:
     return base
 
 
-def fake_pdf(*records: dict[str, Any], method: str = "Parser", issues: list[dict] | None = None) -> bytes:
+def fake_pdf(
+    *records: dict[str, Any],
+    method: str = "Parser",
+    issues: list[dict] | None = None,
+    ai_calls: list[dict] | None = None,
+    page_count: int | None = None,
+) -> bytes:
     """Bytes understood by the fake extractor in tests/fakes.py."""
-    return json.dumps({"method": method, "records": list(records), "issues": issues or []}).encode()
+    payload = {
+        "method": method,
+        "records": list(records),
+        "issues": issues or [],
+        "ai_calls": ai_calls or [],
+        "page_count": page_count,
+    }
+    return json.dumps(payload).encode()
 
 
 class ApiUser:

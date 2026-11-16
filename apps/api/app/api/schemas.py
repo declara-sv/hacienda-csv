@@ -96,10 +96,18 @@ class RefreshRequest(ApiModel):
     refresh_token: Annotated[str, Field(min_length=30, max_length=400)]
 
 
+class AuthAccountDto(ApiModel):
+    id: uuid.UUID
+    name: str
+    role: str
+
+
 class AuthUserDto(ApiModel):
     id: uuid.UUID
     email: str
     full_name: str
+    # The user's default account (additive; older clients ignore it).
+    account: AuthAccountDto | None = None
 
 
 class AuthResponseDto(ApiModel):
@@ -318,3 +326,42 @@ class GenerationRunDto(ApiModel):
     files: list[GenerationRunFileDto]
     artifacts: list[OutputArtifactDto]
     issues: list[IssueDto]
+
+
+# --- Usage --------------------------------------------------------------------------------------
+
+
+class UsageDocumentsDto(ApiModel):
+    parser: int = 0
+    ai: int = 0
+    manual: int = 0
+    total: int = 0
+
+
+class UsageTotalsDto(ApiModel):
+    """Usage of one client (or the whole account when `clientId` is null) in a month."""
+
+    client_id: uuid.UUID | None = None
+    client_name: str | None = None
+    uploads: int = 0
+    bytes_stored: int = 0
+    documents_extracted: UsageDocumentsDto = Field(default_factory=UsageDocumentsDto)
+    extractions_failed: int = 0
+    ai_calls: int = 0
+    ai_input_tokens: int = 0
+    ai_output_tokens: int = 0
+    ai_cache_read_tokens: int = 0
+    ai_cache_creation_tokens: int = 0
+    ai_cost_usd: str = "0.000000"
+    # AI calls with tokens but no price (model missing from the price table).
+    ai_calls_unpriced: int = 0
+    runs: int = 0
+    rows_generated: int = 0
+    downloads: int = 0
+
+
+class UsageReportDto(ApiModel):
+    year: int
+    month: int
+    clients: list[UsageTotalsDto]
+    total: UsageTotalsDto

@@ -8,6 +8,7 @@ from decimal import Decimal
 from enum import StrEnum
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -60,6 +61,20 @@ class DocumentStatus(StrEnum):
     ERROR = "Error"
 
 
+class AccountRole(StrEnum):
+    OWNER = "Owner"
+    MEMBER = "Member"
+
+
+class UsageEventType(StrEnum):
+    UPLOAD_STORED = "upload_stored"
+    EXTRACTION_COMPLETED = "extraction_completed"
+    EXTRACTION_FAILED = "extraction_failed"
+    AI_CALL = "ai_call"
+    RUN_COMPLETED = "run_completed"
+    ARTIFACT_DOWNLOADED = "artifact_downloaded"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -82,12 +97,33 @@ class RefreshToken(Base):
     revoked_at_utc: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
-class Client(Base):
-    __tablename__ = "clients"
-    __table_args__ = (Index("ix_clients_owner_name", "owner_user_id", "name"),)
+class Account(Base):
+    """An accounting firm (or a single accountant). Clients belong to the account, not to a user."""
+
+    __tablename__ = "accounts"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(200))
+    created_at_utc: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AccountMember(Base):
+    __tablename__ = "account_members"
+    __table_args__ = (UniqueConstraint("account_id", "user_id", name="uq_account_members_account_user"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(20), default=AccountRole.MEMBER.value)
+    created_at_utc: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Client(Base):
+    __tablename__ = "clients"
+    __table_args__ = (Index("ix_clients_account_name", "account_id", "name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(160))
     # Legacy free-form identifier shown in the UI. `nit` / `nrc` are the structured values used
     # to recognise the client as emisor of a DTE.
@@ -295,3 +331,46 @@ class OutputArtifact(Base):
     created_at_utc: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     run: Mapped[GenerationRun] = relationship(back_populates="artifacts")
+
+
+class UsageEvent(Base):
+    """Append-only usage ledger, used to decide pricing from real data.
+
+    No foreign keys on purpose: rows must survive deleting the upload, client or account they
+    describe. `client_name` is a snapshot so reports stay readable after the client is gone.
+    Rows are never updated or deleted by the application.
+    """
+
+    __tablename__ = "usage_events"
+    __table_args__ = (Index("ix_usage_events_account_occurred", "account_id", "occurred_at_utc"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    occurred_at_utc: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    event_type: Mapped[str] = mapped_column(String(40))
+    account_id: Mapped[uuid.UUID]
+    actor_user_id: Mapped[uuid.UUID | None]
+    client_id: Mapped[uuid.UUID | None]
+    client_name: Mapped[str | None] = mapped_column(String(160))
+    filing_period_id: Mapped[uuid.UUID | None]
+    upload_id: Mapped[uuid.UUID | None]
+    run_id: Mapped[uuid.UUID | None]
+    artifact_id: Mapped[uuid.UUID | None]
+
+    bytes: Mapped[int | None] = mapped_column(BigInteger)
+    pages: Mapped[int | None] = mapped_column(Integer)
+    documents: Mapped[int | None] = mapped_column(Integer)
+    rows: Mapped[int | None] = mapped_column(Integer)
+
+    extraction_method: Mapped[str | None] = mapped_column(String(20))
+    ai_model: Mapped[str | None] = mapped_column(String(100))
+    ai_input_tokens: Mapped[int | None] = mapped_column(Integer)
+    ai_output_tokens: Mapped[int | None] = mapped_column(Integer)
+    ai_cache_read_tokens: Mapped[int | None] = mapped_column(Integer)
+    ai_cache_creation_tokens: Mapped[int | None] = mapped_column(Integer)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    price_version: Mapped[str | None] = mapped_column(String(20))
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    # `metadata` is reserved on declarative classes, hence the attribute name.
+    metadata_: Mapped[dict] = mapped_column(
+        "metadata", JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )

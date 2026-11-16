@@ -9,7 +9,14 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import DbSession, SettingsDep
 from app.api.errors import ApiError, validation_error
-from app.api.schemas import AuthResponseDto, AuthUserDto, LoginRequest, RefreshRequest, RegisterRequest
+from app.api.schemas import (
+    AuthAccountDto,
+    AuthResponseDto,
+    AuthUserDto,
+    LoginRequest,
+    RefreshRequest,
+    RegisterRequest,
+)
 from app.config import Settings
 from app.models import RefreshToken, User
 from app.security import (
@@ -19,6 +26,7 @@ from app.security import (
     hash_refresh_token,
     verify_password,
 )
+from app.services.accounts import create_personal_account, default_membership
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -45,12 +53,18 @@ def create_token_pair(session: Session, user: User, settings: Settings) -> AuthR
             expires_at_utc=now + dt.timedelta(days=settings.jwt_refresh_token_days),
         )
     )
+    membership = default_membership(session, user.id)
     session.commit()
+    account = (
+        AuthAccountDto(id=membership.account.id, name=membership.account.name, role=membership.role)
+        if membership is not None
+        else None
+    )
     return AuthResponseDto(
         access_token=access_token,
         access_token_expires_at_utc=expires_at,
         refresh_token=refresh_token,
-        user=AuthUserDto(id=user.id, email=user.email, full_name=user.full_name),
+        user=AuthUserDto(id=user.id, email=user.email, full_name=user.full_name, account=account),
     )
 
 
@@ -72,6 +86,8 @@ def register(request: RegisterRequest, session: DbSession, settings: SettingsDep
     except IntegrityError as exc:
         session.rollback()
         raise validation_error("email", "Este correo ya está registrado.") from exc
+    # User, account, membership and refresh token commit together in create_token_pair.
+    create_personal_account(session, user)
     return create_token_pair(session, user, settings)
 
 

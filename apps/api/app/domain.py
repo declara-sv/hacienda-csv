@@ -93,11 +93,34 @@ class DteRecord(BaseModel):
     total: Decimal = ZERO
 
 
+class AiCallOutcome(StrEnum):
+    USED = "used"  # the AI result became the documents
+    DISCARDED = "discarded"  # a response came back but the parser result was kept (or it had no DTE)
+    FAILED = "failed"  # the call or its output failed
+
+
+class AiUsage(BaseModel):
+    """One Claude API call made during extraction, recorded for the usage ledger.
+
+    Token counts are None when no response was received (nothing is billed then).
+    """
+
+    model: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_creation_tokens: int | None = None
+    duration_ms: int | None = None
+    outcome: AiCallOutcome = AiCallOutcome.USED
+
+
 class ExtractionResult(BaseModel):
     method: ExtractionMethod
     records: list[DteRecord]
     issues: list[Issue] = Field(default_factory=list)
     raw_text: str | None = None
+    ai_calls: list[AiUsage] = Field(default_factory=list)
+    page_count: int | None = None
 
 
 class ClientProfile(BaseModel):

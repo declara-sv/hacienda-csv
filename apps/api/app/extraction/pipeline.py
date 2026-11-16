@@ -5,7 +5,15 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from app.domain import DteRecord, ExtractionMethod, ExtractionResult, Issue, IssueSeverity
+from app.domain import (
+    AiCallOutcome,
+    AiUsage,
+    DteRecord,
+    ExtractionMethod,
+    ExtractionResult,
+    Issue,
+    IssueSeverity,
+)
 
 from .ai import AiExtractor
 from .layout import PdfReadError, read_pdf_pages
@@ -22,6 +30,7 @@ class _Candidate:
     failure: str | None = None
     raw_text: str | None = None
     issues: list[Issue] = field(default_factory=list)
+    page_count: int | None = None
 
     @property
     def records(self) -> list[DteRecord]:
@@ -61,7 +70,11 @@ def _run_parser(pdf_bytes: bytes) -> _Candidate:
         return _Candidate(ExtractionMethod.PARSER, [], failure="el archivo no es un PDF válido o está dañado")
     outcome = parse_pages(pages)
     candidate = _Candidate(
-        ExtractionMethod.PARSER, outcome.documents, failure=outcome.failure, raw_text=outcome.raw_text or None
+        ExtractionMethod.PARSER,
+        outcome.documents,
+        failure=outcome.failure,
+        raw_text=outcome.raw_text or None,
+        page_count=len(pages),
     )
     candidate.issues = _with_validation(candidate.documents)
     return candidate
@@ -82,14 +95,33 @@ def _unreadable(reason: str) -> Issue:
     )
 
 
-def _parser_result(parser: _Candidate, extra: list[Issue]) -> ExtractionResult:
+def _parser_result(
+    parser: _Candidate, extra: list[Issue], ai_calls: list[AiUsage] | None = None
+) -> ExtractionResult:
     issues = list(parser.issues)
     if not parser.documents:
         issues.insert(0, _unreadable(parser.failure or "no se encontraron documentos"))
     issues.extend(extra)
     return ExtractionResult(
-        method=ExtractionMethod.PARSER, records=parser.records, issues=issues, raw_text=parser.raw_text
+        method=ExtractionMethod.PARSER,
+        records=parser.records,
+        issues=issues,
+        raw_text=parser.raw_text,
+        ai_calls=ai_calls or [],
+        page_count=parser.page_count,
     )
+
+
+def _failed_call_usage(ai: AiExtractor, exc: Exception) -> AiUsage:
+    """Usage attached to the error by the extractor, or a token-less failed call when there is none."""
+    usage = getattr(exc, "usage", None)
+    if isinstance(usage, AiUsage):
+        return usage.model_copy(update={"outcome": AiCallOutcome.FAILED})
+    return AiUsage(model=str(getattr(ai, "model", None) or "unknown"), outcome=AiCallOutcome.FAILED)
+
+
+def _with_outcome(usage: AiUsage | None, outcome: AiCallOutcome) -> list[AiUsage]:
+    return [usage.model_copy(update={"outcome": outcome})] if usage is not None else []
 
 
 def extract_pdf(pdf_bytes: bytes, *, ai: AiExtractor | None) -> ExtractionResult:
@@ -102,7 +134,7 @@ def extract_pdf(pdf_bytes: bytes, *, ai: AiExtractor | None) -> ExtractionResult
 
     reason = _first_error(parser)
     try:
-        ai_records = ai.extract(pdf_bytes)
+        output = ai.extract(pdf_bytes)
     except Exception as exc:  # the extractor must never break extraction, whatever it raises
         logger.warning("AI extraction failed: %s", exc)
         detail = str(exc) or type(exc).__name__
@@ -115,8 +147,10 @@ def extract_pdf(pdf_bytes: bytes, *, ai: AiExtractor | None) -> ExtractionResult
                     message=f"Se intentó leer el documento con IA y falló: {detail}",
                 )
             ],
+            [_failed_call_usage(ai, exc)],
         )
 
+    ai_records = output.records
     if not ai_records:
         return _parser_result(
             parser,
@@ -127,6 +161,7 @@ def extract_pdf(pdf_bytes: bytes, *, ai: AiExtractor | None) -> ExtractionResult
                     message="Se intentó leer el documento con IA pero no encontró ningún DTE.",
                 )
             ],
+            _with_outcome(output.usage, AiCallOutcome.DISCARDED),
         )
 
     ai_candidate = _Candidate(ExtractionMethod.AI, [ParsedDocument(record=r) for r in ai_records])
@@ -145,6 +180,7 @@ def extract_pdf(pdf_bytes: bytes, *, ai: AiExtractor | None) -> ExtractionResult
                     ),
                 )
             ],
+            _with_outcome(output.usage, AiCallOutcome.DISCARDED),
         )
 
     note = Issue(
@@ -157,4 +193,6 @@ def extract_pdf(pdf_bytes: bytes, *, ai: AiExtractor | None) -> ExtractionResult
         records=ai_candidate.records,
         issues=[note, *ai_candidate.issues],
         raw_text=parser.raw_text,
+        ai_calls=_with_outcome(output.usage, AiCallOutcome.USED),
+        page_count=parser.page_count,
     )

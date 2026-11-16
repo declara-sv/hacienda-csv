@@ -5,11 +5,10 @@ import uuid
 from fastapi import APIRouter, Response, status
 from sqlalchemy import func, select
 
-from app.api.deps import DbSession
+from app.api.deps import CurrentAccount, DbSession
 from app.api.errors import not_found, validation_error
 from app.api.schemas import FilingPeriodDto, FilingPeriodRequest
 from app.models import FilingPeriod, Upload
-from app.security import CurrentUserId
 from app.services.documents import recompute_period
 from app.services.ownership import owned_client
 
@@ -31,8 +30,8 @@ def _dto(period: FilingPeriod, uploads_count: int) -> FilingPeriodDto:
 
 
 @router.get("")
-def list_periods(client_id: uuid.UUID, session: DbSession, user_id: CurrentUserId) -> list[FilingPeriodDto]:
-    owned_client(session, client_id, user_id)
+def list_periods(client_id: uuid.UUID, session: DbSession, account: CurrentAccount) -> list[FilingPeriodDto]:
+    owned_client(session, client_id, account.account_id)
     rows = session.execute(
         select(FilingPeriod, _uploads_count(FilingPeriod.id))
         .where(FilingPeriod.client_id == client_id)
@@ -46,10 +45,10 @@ def create_period(
     client_id: uuid.UUID,
     request: FilingPeriodRequest,
     session: DbSession,
-    user_id: CurrentUserId,
+    account: CurrentAccount,
     response: Response,
 ) -> FilingPeriodDto:
-    owned_client(session, client_id, user_id)
+    owned_client(session, client_id, account.account_id)
     exists = session.scalar(
         select(FilingPeriod.id).where(
             FilingPeriod.client_id == client_id,
@@ -73,9 +72,9 @@ def update_period(
     period_id: uuid.UUID,
     request: FilingPeriodRequest,
     session: DbSession,
-    user_id: CurrentUserId,
+    account: CurrentAccount,
 ) -> FilingPeriodDto:
-    client = owned_client(session, client_id, user_id)
+    client = owned_client(session, client_id, account.account_id)
     period = session.scalar(
         select(FilingPeriod).where(FilingPeriod.id == period_id, FilingPeriod.client_id == client_id)
     )
@@ -105,9 +104,9 @@ def update_period(
 
 @router.delete("/{period_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_period(
-    client_id: uuid.UUID, period_id: uuid.UUID, session: DbSession, user_id: CurrentUserId
+    client_id: uuid.UUID, period_id: uuid.UUID, session: DbSession, account: CurrentAccount
 ) -> Response:
-    owned_client(session, client_id, user_id)
+    owned_client(session, client_id, account.account_id)
     period = session.scalar(
         select(FilingPeriod).where(FilingPeriod.id == period_id, FilingPeriod.client_id == client_id)
     )

@@ -20,8 +20,13 @@ def test_migrations_create_every_table_and_match_the_models(engine: Engine) -> N
         "generation_runs",
         "generation_run_files",
         "output_artifacts",
+        "accounts",
+        "account_members",
+        "usage_events",
         "alembic_version",
     } <= tables
+    # The reporting view is created by the migration only; autogenerate does not compare views.
+    assert "usage_monthly" in inspect(engine).get_view_names()
 
     with engine.connect() as conn:
         diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)

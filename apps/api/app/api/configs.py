@@ -8,11 +8,10 @@ from fastapi import APIRouter, Response, status
 from sqlalchemy import select, update
 
 from app.api.clients import config_dto
-from app.api.deps import DbSession
+from app.api.deps import CurrentAccount, DbSession
 from app.api.errors import not_found, validation_error
 from app.api.schemas import ClientConfigDto, ClientConfigRequest
 from app.models import ClientConfig
-from app.security import CurrentUserId
 from app.services.ownership import owned_client
 
 router = APIRouter(prefix="/api/clients/{client_id}/configs", tags=["client-configs"])
@@ -40,8 +39,8 @@ def _now() -> dt.datetime:
 
 
 @router.get("")
-def list_configs(client_id: uuid.UUID, session: DbSession, user_id: CurrentUserId) -> list[ClientConfigDto]:
-    owned_client(session, client_id, user_id)
+def list_configs(client_id: uuid.UUID, session: DbSession, account: CurrentAccount) -> list[ClientConfigDto]:
+    owned_client(session, client_id, account.account_id)
     configs = session.scalars(
         select(ClientConfig)
         .where(ClientConfig.client_id == client_id)
@@ -55,10 +54,10 @@ def create_config(
     client_id: uuid.UUID,
     request: ClientConfigRequest,
     session: DbSession,
-    user_id: CurrentUserId,
+    account: CurrentAccount,
     response: Response,
 ) -> ClientConfigDto:
-    owned_client(session, client_id, user_id)
+    owned_client(session, client_id, account.account_id)
     _check_json(request)
 
     if request.is_active:
@@ -87,9 +86,9 @@ def update_config(
     config_id: uuid.UUID,
     request: ClientConfigRequest,
     session: DbSession,
-    user_id: CurrentUserId,
+    account: CurrentAccount,
 ) -> ClientConfigDto:
-    owned_client(session, client_id, user_id)
+    owned_client(session, client_id, account.account_id)
     _check_json(request)
     config = session.scalar(
         select(ClientConfig).where(ClientConfig.id == config_id, ClientConfig.client_id == client_id)
@@ -118,9 +117,9 @@ def update_config(
 
 @router.delete("/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_config(
-    client_id: uuid.UUID, config_id: uuid.UUID, session: DbSession, user_id: CurrentUserId
+    client_id: uuid.UUID, config_id: uuid.UUID, session: DbSession, account: CurrentAccount
 ) -> Response:
-    owned_client(session, client_id, user_id)
+    owned_client(session, client_id, account.account_id)
     config = session.scalar(
         select(ClientConfig).where(ClientConfig.id == config_id, ClientConfig.client_id == client_id)
     )

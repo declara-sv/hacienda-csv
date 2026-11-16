@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import threading
+import time
 import uuid
 from collections.abc import Callable
 
@@ -17,7 +18,7 @@ from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from app.config import Settings
-from app.domain import ExtractionResult, IssueSeverity
+from app.domain import AiCallOutcome, ExtractionResult, IssueSeverity
 from app.models import (
     Client,
     DteDocument,
@@ -32,6 +33,8 @@ from app.models import (
 from app.services import integrations
 from app.services.documents import apply_record, client_profile, recompute_period, reviewed_document
 from app.storage import FileStorage, StoredFileReference
+from app.usage import recorder as usage
+from app.usage.recorder import UsageScope
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +166,9 @@ def process_run(session: Session, storage: FileStorage, settings: Settings, run_
             session.commit()
             return
 
+        total_bytes = 0
         for output in result.files:
+            total_bytes += len(output.content)
             path = (
                 f"{run.client_id}/{period.year:04d}/{period.month:02d}/run-{run.version}/{output.file_name}"
             )
@@ -199,6 +204,17 @@ def process_run(session: Session, storage: FileStorage, settings: Settings, run_
         run.status = RunStatus.COMPLETED.value
         run.completed_at_utc = _now()
         run.error_message = None
+        usage.run_completed(
+            session,
+            UsageScope.for_client(
+                client, run.requested_by_user_id, filing_period_id=period.id, run_id=run.id
+            ),
+            documents=len(docs),
+            rows=sum(output.row_count for output in result.files),
+            files=len(result.files),
+            size_bytes=total_bytes,
+            version=run.version,
+        )
         session.commit()
     except Exception as exc:
         logger.exception("Falló la generación %s.", run_id)
@@ -261,11 +277,24 @@ def process_extraction(
     claimed_at = upload.extraction_started_at_utc
     kind = upload.source_file_kind
     reference = StoredFileReference(upload.storage_provider, upload.storage_container, upload.storage_path)
+    client = session.get(Client, upload.client_id)
+    # Captured now so AI usage can be recorded even if the upload or client is deleted meanwhile.
+    scope = (
+        UsageScope.for_client(
+            client,
+            upload.uploaded_by_user_id,
+            filing_period_id=upload.filing_period_id,
+            upload_id=upload.id,
+        )
+        if client is not None
+        else None
+    )
     # End the transaction before the (possibly slow) extraction.
     session.commit()
 
     result: ExtractionResult | None = None
     error: str | None = None
+    started = time.monotonic()
     try:
         if kind != "PDF":
             raise _ExtractionFailure(EXCEL_NOT_SUPPORTED)
@@ -281,12 +310,66 @@ def process_extraction(
     except Exception as exc:
         logger.exception("Falló la lectura del upload %s.", upload_id)
         error = f"Error al leer el archivo: {exc}" if str(exc) else "Error al leer el archivo."
+    duration_ms = int((time.monotonic() - started) * 1000)
 
     try:
-        _save_extraction(session, upload_id, claimed_at, result, error)
+        _save_extraction(session, upload_id, claimed_at, result, error, scope, duration_ms)
     except Exception:
         logger.exception("No se pudo guardar la lectura del upload %s.", upload_id)
         session.rollback()
+        # The AI tokens were spent even though the result could not be saved.
+        _record_orphan_ai_calls(session, scope, result, "save_failed")
+
+
+def _record_orphan_ai_calls(
+    session: Session, scope: UsageScope | None, result: ExtractionResult | None, reason: str
+) -> None:
+    """Record the AI calls of a result that was not saved, in a transaction of their own."""
+    if scope is None or result is None or not result.ai_calls:
+        return
+    try:
+        calls = [
+            c.model_copy(update={"outcome": AiCallOutcome.DISCARDED})
+            if c.outcome == AiCallOutcome.USED
+            else c
+            for c in result.ai_calls
+        ]
+        usage.ai_calls(session, scope, calls, extra={"resultDropped": reason})
+        session.commit()
+    except Exception:
+        logger.exception("No se pudo registrar el uso de IA del upload %s.", scope.upload_id)
+        session.rollback()
+
+
+def _record_extraction_usage(
+    session: Session,
+    scope: UsageScope | None,
+    result: ExtractionResult | None,
+    error: str | None,
+    duration_ms: int,
+) -> None:
+    if scope is None:
+        return
+    if result is not None:
+        usage.ai_calls(session, scope, result.ai_calls)
+    if error is None and result is not None:
+        usage.extraction_completed(
+            session,
+            scope,
+            method=result.method.value,
+            pages=result.page_count,
+            documents=len(result.records),
+            duration_ms=duration_ms,
+        )
+    else:
+        usage.extraction_failed(
+            session,
+            scope,
+            error=error or "Error al leer el archivo.",
+            method=result.method.value if result is not None else None,
+            pages=result.page_count if result is not None else None,
+            duration_ms=duration_ms,
+        )
 
 
 def _save_extraction(
@@ -295,6 +378,8 @@ def _save_extraction(
     claimed_at: dt.datetime | None,
     result: ExtractionResult | None,
     error: str | None,
+    scope: UsageScope | None = None,
+    duration_ms: int = 0,
 ) -> None:
     upload = session.scalar(
         select(Upload)
@@ -309,10 +394,12 @@ def _save_extraction(
         or upload.extraction_started_at_utc != claimed_at
     ):
         session.rollback()
+        _record_orphan_ai_calls(session, scope, result, "upload_changed")
         return
 
     session.execute(delete(DteDocument).where(DteDocument.upload_id == upload_id))
     upload.extraction_completed_at_utc = _now()
+    _record_extraction_usage(session, scope, result, error, duration_ms)
 
     if error is not None or result is None:
         upload.extraction_status = ExtractionStatus.FAILED.value

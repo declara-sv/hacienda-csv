@@ -35,7 +35,8 @@ app/
   extraction/        # PDF -> ExtractionResult (parser MH + respaldo IA) y validaciones del documento
   anexos/            # especificación F-07 como datos, catálogos de Renta, builder y escritor CSV
   api/               # routers FastAPI
-  services/          # lógica de casos de uso (propiedad, uploads, documentos, runs)
+  services/          # lógica de casos de uso (cuentas, alcance por cuenta, uploads, documentos, runs)
+  usage/             # registro de uso (eventos) y tabla de precios de IA
   storage/           # Local / Azure Blob
   worker.py          # extracción de uploads + procesamiento de generation runs
 alembic/
@@ -115,6 +116,48 @@ tipoOperacionRenta, tipoIngresoRenta, effectiveTipoOperacion, effectiveTipoIngre
 
 Los `issues` de un documento se recalculan al extraer, al editarlo, al editar el cliente y al listar
 (duplicados y período dependen del conjunto).
+
+## Cuentas y registro de uso
+
+Pensado para que hoy lo use una sola persona y mañana varias personas de una misma firma contable, y
+para registrar el uso desde ya y decidir precios con datos reales (no hay cobro).
+
+- **Cuentas**: `accounts` (firma) y `account_members` (`Owner` | `Member`, único por cuenta y usuario).
+  Los clientes pertenecen a la cuenta (`clients.account_id`), no al usuario. Registrarse crea, en una sola
+  transacción, el usuario, una cuenta con su nombre completo y la membresía `Owner`.
+- **Cuenta actual**: dependencia `CurrentAccount` → `(user_id, account_id)`. Sin encabezado se usa la
+  membresía más antigua (hoy hay una sola). Con `X-Account-Id` debe ser una cuenta del usuario
+  (403 si no; 400 si el identificador es inválido). Los recursos de otra cuenta siguen respondiendo 404.
+  La respuesta de auth agrega `user.account: {id, name, role}`. No hay invitaciones todavía.
+- **Registro de uso** (`usage_events`): tabla solo de inserción, **sin llaves foráneas** para que las filas
+  sobrevivan al borrar uploads, clientes o cuentas; guarda `client_name` como foto del nombre. Se escribe
+  en la misma transacción del cambio de negocio, dentro de un SAVEPOINT: si el insert del evento falla se
+  registra en el log y la operación continúa.
+
+  | Evento | Cuándo | Cantidades |
+  | --- | --- | --- |
+  | `upload_stored` | al crear el upload | `bytes` |
+  | `extraction_completed` / `extraction_failed` | al guardar la lectura | método, `pages`, `documents`, `duration_ms`; error en `metadata` |
+  | `ai_call` | cada llamada a Claude, también si el resultado se descarta o falla tras recibir respuesta | tokens (entrada, salida, caché lectura/escritura), `cost_usd`, `price_version`, `duration_ms`, `metadata.outcome` = `used` / `discarded` / `failed` |
+  | `run_completed` | al completar una generación | `documents`, `rows` (suma de artefactos), `bytes`; `files` y `version` en `metadata` |
+  | `artifact_downloaded` | al iniciar la descarga | `bytes` |
+
+  El actor es el usuario que subió el archivo o pidió la generación/descarga. Re-extraer genera eventos
+  nuevos (es un costo real). Si el upload se borra o se re-encola mientras se lee, los `ai_call` igual se
+  registran (`metadata.resultDropped`).
+- **Contrato de extracción**: `ExtractionResult` agrega `ai_calls: list[AiUsage]` y `page_count`
+  (de pdfplumber). `AiExtractor.extract` devuelve `AiExtractorOutput(records, usage)` y
+  `AiExtractionError` lleva `usage`. El extractor usa `messages.create` con `output_config` y valida el
+  JSON localmente, para tener `response.usage` aun cuando la salida es un rechazo o no cumple el esquema.
+- **Precios**: `app/usage/pricing.py`, tabla versionada (`PRICE_VERSION = "2026-11"`, USD por millón de
+  tokens, `Decimal`). Modelo desconocido → `cost_usd` nulo (los tokens se guardan igual). Los tokens son la
+  fuente de verdad para recalcular; los precios se verifican contra la página de precios de Anthropic
+  cada vez que se actualizan.
+- **Reportes**: vista `usage_monthly` (creada en la migración; autogenerate no compara vistas) agrupada por
+  cuenta, cliente, mes UTC, tipo de evento, método y modelo. `GET /api/usage?year=&month=` devuelve
+  totales por cliente y de la cuenta: `uploads`, `bytesStored`, `documentsExtracted {parser, ai, manual,
+  total}`, `extractionsFailed`, `aiCalls`, tokens, `aiCostUsd` (texto con 6 decimales),
+  `aiCallsUnpriced`, `runs`, `rowsGenerated`, `downloads`.
 
 ## Riesgos abiertos
 

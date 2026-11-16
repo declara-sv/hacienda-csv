@@ -11,7 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.middleware.cors import CORSMiddleware
 
-from app.api import artifacts, auth, catalogs, clients, configs, documents, periods, runs, uploads
+from app.api import artifacts, auth, catalogs, clients, configs, documents, periods, runs, uploads, usage
 from app.api.errors import install_error_handlers
 from app.config import Settings, get_settings
 from app.storage import FileStorage, build_storage
@@ -90,7 +90,7 @@ def create_app(
     def health() -> dict:
         return {"status": "ok"}
 
-    for module in (auth, clients, configs, periods, uploads, documents, runs, artifacts, catalogs):
+    for module in (auth, clients, configs, periods, uploads, documents, runs, artifacts, catalogs, usage):
         app.include_router(module.router)
     return app
 

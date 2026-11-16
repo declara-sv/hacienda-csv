@@ -19,6 +19,45 @@ down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+# Monthly usage per account/client for reporting. `client_name` is the latest snapshot seen for the
+# client, so renamed or deleted clients still group under one readable name. Months are UTC.
+USAGE_MONTHLY_VIEW = """
+CREATE VIEW usage_monthly AS
+WITH latest_client_names AS (
+    SELECT DISTINCT ON (client_id) client_id, client_name
+    FROM usage_events
+    WHERE client_id IS NOT NULL AND client_name IS NOT NULL
+    ORDER BY client_id, occurred_at_utc DESC
+)
+SELECT
+    e.account_id,
+    e.client_id,
+    n.client_name,
+    date_trunc('month', e.occurred_at_utc AT TIME ZONE 'UTC')::date AS month,
+    e.event_type,
+    e.extraction_method,
+    e.ai_model,
+    count(*) AS events,
+    sum(e.bytes) AS bytes,
+    sum(e.pages) AS pages,
+    sum(e.documents) AS documents,
+    sum(e.rows) AS rows,
+    sum(e.ai_input_tokens) AS ai_input_tokens,
+    sum(e.ai_output_tokens) AS ai_output_tokens,
+    sum(e.ai_cache_read_tokens) AS ai_cache_read_tokens,
+    sum(e.ai_cache_creation_tokens) AS ai_cache_creation_tokens,
+    sum(e.cost_usd) AS cost_usd,
+    count(*) FILTER (
+        WHERE e.event_type = 'ai_call' AND e.cost_usd IS NULL AND e.ai_input_tokens IS NOT NULL
+    ) AS unpriced_ai_calls
+FROM usage_events e
+LEFT JOIN latest_client_names n ON n.client_id = e.client_id
+GROUP BY
+    e.account_id, e.client_id, n.client_name,
+    date_trunc('month', e.occurred_at_utc AT TIME ZONE 'UTC')::date,
+    e.event_type, e.extraction_method, e.ai_model
+"""
+
 
 def upgrade() -> None:
     """Upgrade schema."""
@@ -35,9 +74,29 @@ def upgrade() -> None:
         sa.UniqueConstraint("normalized_email"),
     )
     op.create_table(
+        "accounts",
+        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("name", sa.String(length=200), nullable=False),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_table(
+        "account_members",
+        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("account_id", sa.Uuid(), nullable=False),
+        sa.Column("user_id", sa.Uuid(), nullable=False),
+        sa.Column("role", sa.String(length=20), nullable=False),
+        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["account_id"], ["accounts.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("account_id", "user_id", name="uq_account_members_account_user"),
+    )
+    op.create_index(op.f("ix_account_members_user_id"), "account_members", ["user_id"], unique=False)
+    op.create_table(
         "clients",
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("owner_user_id", sa.Uuid(), nullable=False),
+        sa.Column("account_id", sa.Uuid(), nullable=False),
         sa.Column("name", sa.String(length=160), nullable=False),
         sa.Column("tax_id", sa.String(length=32), nullable=False),
         sa.Column("nit", sa.String(length=20), nullable=True),
@@ -46,10 +105,10 @@ def upgrade() -> None:
         sa.Column("default_tipo_ingreso", sa.String(length=2), nullable=True),
         sa.Column("notes", sa.String(length=2000), nullable=True),
         sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["owner_user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["account_id"], ["accounts.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_clients_owner_name", "clients", ["owner_user_id", "name"], unique=False)
+    op.create_index("ix_clients_account_name", "clients", ["account_id", "name"], unique=False)
     op.create_table(
         "refresh_tokens",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -232,12 +291,58 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["generation_run_id"], ["generation_runs.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
+    # Append-only usage ledger: no foreign keys so rows survive deletes.
+    op.create_table(
+        "usage_events",
+        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("occurred_at_utc", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("event_type", sa.String(length=40), nullable=False),
+        sa.Column("account_id", sa.Uuid(), nullable=False),
+        sa.Column("actor_user_id", sa.Uuid(), nullable=True),
+        sa.Column("client_id", sa.Uuid(), nullable=True),
+        sa.Column("client_name", sa.String(length=160), nullable=True),
+        sa.Column("filing_period_id", sa.Uuid(), nullable=True),
+        sa.Column("upload_id", sa.Uuid(), nullable=True),
+        sa.Column("run_id", sa.Uuid(), nullable=True),
+        sa.Column("artifact_id", sa.Uuid(), nullable=True),
+        sa.Column("bytes", sa.BigInteger(), nullable=True),
+        sa.Column("pages", sa.Integer(), nullable=True),
+        sa.Column("documents", sa.Integer(), nullable=True),
+        sa.Column("rows", sa.Integer(), nullable=True),
+        sa.Column("extraction_method", sa.String(length=20), nullable=True),
+        sa.Column("ai_model", sa.String(length=100), nullable=True),
+        sa.Column("ai_input_tokens", sa.Integer(), nullable=True),
+        sa.Column("ai_output_tokens", sa.Integer(), nullable=True),
+        sa.Column("ai_cache_read_tokens", sa.Integer(), nullable=True),
+        sa.Column("ai_cache_creation_tokens", sa.Integer(), nullable=True),
+        sa.Column("cost_usd", sa.Numeric(precision=12, scale=6), nullable=True),
+        sa.Column("price_version", sa.String(length=20), nullable=True),
+        sa.Column("duration_ms", sa.Integer(), nullable=True),
+        sa.Column(
+            "metadata",
+            postgresql.JSONB(astext_type=sa.Text()),
+            server_default=sa.text("'{}'::jsonb"),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index(
+        "ix_usage_events_account_occurred", "usage_events", ["account_id", "occurred_at_utc"], unique=False
+    )
+    op.create_index(
+        op.f("ix_usage_events_occurred_at_utc"), "usage_events", ["occurred_at_utc"], unique=False
+    )
+    op.execute(USAGE_MONTHLY_VIEW)
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
+    op.execute("DROP VIEW IF EXISTS usage_monthly")
+    op.drop_index(op.f("ix_usage_events_occurred_at_utc"), table_name="usage_events")
+    op.drop_index("ix_usage_events_account_occurred", table_name="usage_events")
+    op.drop_table("usage_events")
     op.drop_table("output_artifacts")
     op.drop_table("generation_run_files")
     op.drop_index(op.f("ix_dte_documents_upload_id"), table_name="dte_documents")
@@ -259,7 +364,10 @@ def downgrade() -> None:
     op.drop_table("client_configs")
     op.drop_index(op.f("ix_refresh_tokens_user_id"), table_name="refresh_tokens")
     op.drop_table("refresh_tokens")
-    op.drop_index("ix_clients_owner_name", table_name="clients")
+    op.drop_index("ix_clients_account_name", table_name="clients")
     op.drop_table("clients")
+    op.drop_index(op.f("ix_account_members_user_id"), table_name="account_members")
+    op.drop_table("account_members")
+    op.drop_table("accounts")
     op.drop_table("users")
     # ### end Alembic commands ###

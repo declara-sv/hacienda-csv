@@ -7,7 +7,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from app.domain import DteRecord
+from app.domain import AiCallOutcome, AiUsage, DteRecord
+from app.extraction.ai import AiExtractorOutput
 from app.extraction.layout import Page, Word
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -140,15 +141,37 @@ def make_ccf(**overrides: Any) -> DteRecord:
 
 
 class FakeAi:
-    """AiExtractor double: returns fixed records or raises."""
+    """AiExtractor double: returns fixed records (with token usage) or raises."""
 
-    def __init__(self, records: list[DteRecord] | None = None, error: Exception | None = None) -> None:
+    model = "claude-opus-5-5"
+
+    def __init__(
+        self,
+        records: list[DteRecord] | None = None,
+        error: Exception | None = None,
+        *,
+        input_tokens: int = 1000,
+        output_tokens: int = 200,
+    ) -> None:
         self.records = records or []
         self.error = error
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
         self.calls = 0
 
-    def extract(self, pdf_bytes: bytes) -> list[DteRecord]:
+    def usage(self, outcome: AiCallOutcome = AiCallOutcome.USED) -> AiUsage:
+        return AiUsage(
+            model=self.model,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+            duration_ms=5,
+            outcome=outcome,
+        )
+
+    def extract(self, pdf_bytes: bytes) -> AiExtractorOutput:
         self.calls += 1
         if self.error is not None:
             raise self.error
-        return list(self.records)
+        return AiExtractorOutput(list(self.records), self.usage())

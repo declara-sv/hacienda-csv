@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from app.domain import ExtractionMethod, IssueSeverity
+from app.domain import AiCallOutcome, AiUsage, ExtractionMethod, IssueSeverity
 from app.extraction import AiExtractionError, extract_pdf
 from app.extraction.layout import Page
 
@@ -149,3 +149,54 @@ def test_multi_document_issues_name_the_document():
     assert len(result.records) == 2
     assert result.issues
     assert all(i.message.startswith("Documento 2 (5E6F7A8B-") for i in result.issues)
+
+
+# --- AI usage and page count ---------------------------------------------------------------------
+
+
+def test_parser_result_has_page_count_and_no_ai_calls():
+    result = extract_pdf(_pdf(), ai=FakeAi([make_record()]))
+    assert result.page_count == 1
+    assert result.ai_calls == []
+
+
+def test_garbage_bytes_have_no_page_count():
+    assert extract_pdf(b"not a pdf", ai=None).page_count is None
+
+
+def test_used_ai_call_is_reported():
+    result = extract_pdf(SCANNED, ai=FakeAi([make_record()], input_tokens=900, output_tokens=150))
+    assert result.page_count == 1
+    (call,) = result.ai_calls
+    assert call.outcome == AiCallOutcome.USED
+    assert (call.model, call.input_tokens, call.output_tokens) == ("claude-opus-5-5", 900, 150)
+
+
+def test_discarded_ai_call_still_reports_tokens():
+    bad = make_record(codigo_generacion="x", numero_control="y", total=Decimal("1.00"), emisor_nit=None)
+    result = extract_pdf(_pdf_without_totals(), ai=FakeAi([bad]))
+    assert result.method == ExtractionMethod.PARSER
+    (call,) = result.ai_calls
+    assert call.outcome == AiCallOutcome.DISCARDED
+    assert call.input_tokens == 1000
+
+
+def test_ai_without_documents_is_a_discarded_call():
+    (call,) = extract_pdf(SCANNED, ai=FakeAi([])).ai_calls
+    assert call.outcome == AiCallOutcome.DISCARDED
+    assert call.output_tokens == 200
+
+
+def test_failed_ai_call_keeps_the_usage_attached_to_the_error():
+    usage = AiUsage(model="claude-haiku-5-5", input_tokens=50, output_tokens=7)
+    result = extract_pdf(SCANNED, ai=FakeAi(error=AiExtractionError("No.", usage)))
+    (call,) = result.ai_calls
+    assert call.outcome == AiCallOutcome.FAILED
+    assert (call.model, call.input_tokens, call.output_tokens) == ("claude-haiku-5-5", 50, 7)
+
+
+def test_unexpected_ai_exception_reports_a_call_without_tokens():
+    (call,) = extract_pdf(SCANNED, ai=FakeAi(error=RuntimeError("boom"))).ai_calls
+    assert call.outcome == AiCallOutcome.FAILED
+    assert call.model == "claude-opus-5-5"
+    assert call.input_tokens is None

@@ -5,10 +5,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Response, UploadFile, status
 
-from app.api.deps import DbSession, SettingsDep, StorageDep
+from app.api.deps import CurrentAccount, DbSession, SettingsDep, StorageDep
 from app.api.errors import ApiError
 from app.api.schemas import UploadDto
-from app.security import CurrentUserId
 from app.services import uploads as service
 
 router = APIRouter(prefix="/api/clients/{client_id}/periods/{period_id}/uploads", tags=["uploads"])
@@ -16,9 +15,9 @@ router = APIRouter(prefix="/api/clients/{client_id}/periods/{period_id}/uploads"
 
 @router.get("")
 def list_uploads(
-    client_id: uuid.UUID, period_id: uuid.UUID, session: DbSession, user_id: CurrentUserId
+    client_id: uuid.UUID, period_id: uuid.UUID, session: DbSession, account: CurrentAccount
 ) -> list[UploadDto]:
-    return service.list_uploads(session, client_id, period_id, user_id)
+    return service.list_uploads(session, client_id, period_id, account)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -30,7 +29,7 @@ def create_upload(
     session: DbSession,
     storage: StorageDep,
     settings: SettingsDep,
-    user_id: CurrentUserId,
+    account: CurrentAccount,
     response: Response,
 ) -> UploadDto:
     # Read at most limit+1 bytes so an oversized upload is rejected without loading all of it.
@@ -45,7 +44,7 @@ def create_upload(
         settings,
         client_id=client_id,
         period_id=period_id,
-        user_id=user_id,
+        account=account,
         file_name=file.filename or "archivo",
         content_type=file.content_type,
         content=content,
@@ -62,9 +61,9 @@ def delete_upload(
     upload_id: uuid.UUID,
     session: DbSession,
     storage: StorageDep,
-    user_id: CurrentUserId,
+    account: CurrentAccount,
 ) -> Response:
-    service.delete_upload(session, storage, client_id, period_id, upload_id, user_id)
+    service.delete_upload(session, storage, client_id, period_id, upload_id, account)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -74,6 +73,6 @@ def reextract_upload(
     period_id: uuid.UUID,
     upload_id: uuid.UUID,
     session: DbSession,
-    user_id: CurrentUserId,
+    account: CurrentAccount,
 ) -> UploadDto:
-    return service.reextract_upload(session, client_id, period_id, upload_id, user_id)
+    return service.reextract_upload(session, client_id, period_id, upload_id, account)

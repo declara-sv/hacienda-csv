@@ -150,6 +150,10 @@ Revisar siempre el archivo generado en `alembic/versions/` antes de commitearlo.
 - `GET/POST /api/clients/{clientId}/periods/{periodId}/runs`
 - `GET /api/catalogs/renta`
 - `GET /api/artifacts/{artifactId}/download`
+- `GET /api/usage?year=AAAA&month=M` (uso del mes de la cuenta actual, por cliente y total)
+
+Todos los recursos pertenecen a la cuenta del usuario (creada al registrarse). El encabezado opcional
+`X-Account-Id` elige otra cuenta de la que el usuario sea miembro (403 si no lo es).
 
 ## Extracción de DTE
 
