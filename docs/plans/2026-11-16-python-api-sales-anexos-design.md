@@ -24,9 +24,9 @@ columnas queda como datos para habilitarlo después).
   (`AI_EXTRACTION_MODEL`, por defecto `claude-opus-5-5`), salida estructurada.
 - Postgres; almacenamiento local o Azure Blob (igual que antes).
 - El worker corre dentro del proceso del API (hilo) y reclama trabajos con `FOR UPDATE SKIP LOCKED`.
-- No hay datos de producción (el único deploy falló), así que el esquema es nuevo (snake_case).
+- El código .NET se retiró en esta rama. No hay datos de producción (el único deploy falló), así que el esquema es nuevo (snake_case).
 
-## Estructura (`apps/api-py`, se renombra a `apps/api` al retirar .NET)
+## Estructura (`apps/api`)
 
 ```text
 app/

@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="Accounting.Api/Accounting.Api.csproj" />
-  <Project Path="Accounting.Api.Tests/Accounting.Api.Tests.csproj" />
-</Solution>
