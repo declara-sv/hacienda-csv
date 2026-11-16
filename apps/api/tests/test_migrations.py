@@ -46,3 +46,26 @@ def test_app_startup_does_not_run_migrations() -> None:
 
     source = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
     assert "alembic" not in source
+
+
+def test_every_table_has_row_level_security(engine: Engine) -> None:
+    """Supabase exposes `public` through its Data API; a table without RLS is world-readable.
+
+    A new table needs its own migration that enables RLS (never edit an applied migration).
+    """
+    with engine.connect() as conn:
+        unprotected = (
+            conn.execute(
+                text(
+                    "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relrowsecurity"
+                )
+            )
+            .scalars()
+            .all()
+        )
+        view_options = conn.execute(
+            text("SELECT reloptions FROM pg_class WHERE relname = 'usage_monthly'")
+        ).scalar_one()
+    assert unprotected == []
+    assert "security_invoker=true" in (view_options or [])
