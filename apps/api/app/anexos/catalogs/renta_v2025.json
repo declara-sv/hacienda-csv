@@ -1,0 +1,25 @@
+{
+  "source": "Manual de Usuario para la Presentación de Anexos F-07 (700-DGII-MN-2021-026)",
+  "tipoOperacion": [
+    {"code": "1", "label": "Gravada"},
+    {"code": "2", "label": "No Gravada o Exenta"},
+    {"code": "3", "label": "Excluido o no Constituye Renta"},
+    {"code": "4", "label": "Mixta"},
+    {"code": "12", "label": "Ingresos que ya fueron sujetos de retención informados en el F14 y consolidados en F910"},
+    {"code": "13", "label": "Sujetos pasivos excluidos (Art. 6 LISR)"}
+  ],
+  "tipoIngreso": [
+    {"code": "1", "label": "Profesiones, Artes y Oficios"},
+    {"code": "2", "label": "Actividades de Servicios"},
+    {"code": "3", "label": "Actividades Comerciales"},
+    {"code": "4", "label": "Actividades Industriales"},
+    {"code": "5", "label": "Actividades Agropecuarias"},
+    {"code": "6", "label": "Utilidades y Dividendos"},
+    {"code": "7", "label": "Exportaciones de Bienes"},
+    {"code": "8", "label": "Servicios Realizados en el Exterior y Utilizados en El Salvador"},
+    {"code": "9", "label": "Exportaciones de Servicios"},
+    {"code": "10", "label": "Otras Rentas Gravables"},
+    {"code": "12", "label": "Ingresos que ya fueron sujetos de retención informados en el F14 y consolidados en F910"},
+    {"code": "13", "label": "Sujetos pasivos excluidos (Art. 6 LISR)"}
+  ]
+}
