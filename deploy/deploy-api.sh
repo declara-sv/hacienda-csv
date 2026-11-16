@@ -16,7 +16,7 @@ remote() { ssh -o BatchMode=yes "$HOST" "$@"; }
 if [ "${1:-}" = "--rollback" ]; then
   remote "set -euo pipefail
     cur=\$(sudo readlink $APP_DIR/current)
-    prev=\$(sudo ls -1d $APP_DIR/releases/* | grep -vx \"\$cur\" | tail -1)
+    prev=\$(sudo find $APP_DIR/releases -mindepth 1 -maxdepth 1 -type d | sort | grep -vx \"\$cur\" | tail -1)
     [ -n \"\$prev\" ] || { echo 'No previous release.' >&2; exit 1; }
     sudo -u hacienda ln -sfn \"\$prev\" $APP_DIR/current
     sudo systemctl restart hacienda-api
@@ -49,6 +49,6 @@ remote "set -euo pipefail
     sleep 1
     [ \$i -eq 20 ] && { echo 'Health check FAILED; see: sudo journalctl -u hacienda-api -n 50' >&2; exit 1; }
   done
-  sudo ls -1d $APP_DIR/releases/* | head -n -$KEEP | xargs -r sudo rm -rf
+  sudo find $APP_DIR/releases -mindepth 1 -maxdepth 1 -type d | sort | head -n -$KEEP | xargs -r sudo rm -rf
 "
 echo "Done. Release $SHA is live."
