@@ -125,7 +125,9 @@ class ClientConfig(Base):
 
 class FilingPeriod(Base):
     __tablename__ = "filing_periods"
-    __table_args__ = (UniqueConstraint("client_id", "year", "month", name="uq_filing_periods_client_year_month"),)
+    __table_args__ = (
+        UniqueConstraint("client_id", "year", "month", name="uq_filing_periods_client_year_month"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"))
@@ -188,6 +190,8 @@ class DteDocument(Base):
     issues: Mapped[list[dict]] = mapped_column(JSONB, default=list)
     # Exactly what extraction produced, kept for audit after user edits.
     extracted: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Issues reported by the extractor itself (e.g. AI fallback used). Shown until the user edits.
+    extraction_issues: Mapped[list[dict]] = mapped_column(JSONB, default=list)
     edited: Mapped[bool] = mapped_column(Boolean, default=False)
     excluded: Mapped[bool] = mapped_column(Boolean, default=False)
 
