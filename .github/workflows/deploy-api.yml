@@ -34,6 +34,8 @@ jobs:
       CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
       CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT: ${{ vars.CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT }}
       API_STORAGE_PROVIDER: ${{ vars.API_STORAGE_PROVIDER }}
+      API_AI_EXTRACTION_ENABLED: ${{ vars.API_AI_EXTRACTION_ENABLED }}
+      API_AI_EXTRACTION_MODEL: ${{ vars.API_AI_EXTRACTION_MODEL }}
 
     steps:
       - name: Validate release tag
@@ -81,7 +83,7 @@ jobs:
 
       - name: Validate Secret Manager versions (metadata only)
         run: |
-          for secret in api-connection-string-postgres api-jwt-signing-key api-storage-azure-blob-connection-string; do
+          for secret in api-database-url api-jwt-signing-key api-storage-azure-blob-connection-string api-anthropic-api-key; do
             STATE=$(gcloud secrets versions describe latest --secret "$secret" --project "$GCP_PROJECT_ID" --format='value(state)')
             if [ "$STATE" != ENABLED ]; then
               echo "Secret has no enabled latest version: $secret"
@@ -111,8 +113,8 @@ jobs:
         if: github.event_name == 'push'
         uses: useblacksmith/build-push-action@v2
         with:
-          context: apps/api/Accounting.Api
-          file: apps/api/Accounting.Api/Dockerfile
+          context: apps/api
+          file: apps/api/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ steps.target.outputs.uri }}
@@ -130,31 +132,20 @@ jobs:
           fi
           echo "uri=${IMAGE_TAG%:*}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
-      - name: Setup .NET
-        id: dotnet
-        if: github.event_name == 'push'
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-      - name: Build migration bundle
-        id: bundle
-        if: github.event_name == 'push'
-        working-directory: apps/api/Accounting.Api
-        run: |
-          dotnet tool restore
-          dotnet ef migrations bundle --self-contained -r linux-x64 -o efbundle
+      # Migrations run from the exact image (by digest) that is about to be deployed.
+      # DATABASE_URL reaches the container through `-e NAME`, never through argv.
       - name: Apply migrations
         id: migrate
         if: github.event_name == 'push'
-        working-directory: apps/api/Accounting.Api
         env:
-          CONNECTION_STRING: ${{ secrets.API_CONNECTION_STRING_POSTGRES }}
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          DATABASE_URL: ${{ secrets.API_DATABASE_URL }}
         run: |
-          if [ -z "$CONNECTION_STRING" ]; then
-            echo 'Missing repository secret: API_CONNECTION_STRING_POSTGRES'
+          if [ -z "$DATABASE_URL" ]; then
+            echo 'Missing repository secret: API_DATABASE_URL'
             exit 1
           fi
-          ./efbundle --connection "$CONNECTION_STRING"
+          docker run --rm -e DATABASE_URL "$IMAGE_URI" alembic upgrade head
 
       # Default success() gating is intentional: never deploy after a failed migration.
       - name: Deploy to Cloud Run
@@ -163,7 +154,14 @@ jobs:
           IMAGE_URI: ${{ steps.image.outputs.uri }}
         run: |
           STORAGE_PROVIDER="${API_STORAGE_PROVIDER:-Local}"
+          AI_ENABLED="${API_AI_EXTRACTION_ENABLED:-true}"
           RUNTIME_SA="${CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT:-cloud-run-runtime@${GCP_PROJECT_ID}.iam.gserviceaccount.com}"
+          ENV_VARS="ENVIRONMENT=Production,ENABLE_SWAGGER=false,WORKER_ENABLED=true,JWT_ISSUER=Accounting.Api,JWT_AUDIENCE=Accounting.Web,JWT_ACCESS_TOKEN_MINUTES=20,JWT_REFRESH_TOKEN_DAYS=30,STORAGE_PROVIDER=${STORAGE_PROVIDER},STORAGE_UPLOAD_CONTAINER=uploads,STORAGE_OUTPUT_CONTAINER=outputs,AI_EXTRACTION_ENABLED=${AI_ENABLED}"
+          if [ -n "$API_AI_EXTRACTION_MODEL" ]; then
+            ENV_VARS="${ENV_VARS},AI_EXTRACTION_MODEL=${API_AI_EXTRACTION_MODEL}"
+          fi
+          # The extraction/generation worker runs inside the API process, so CPU must stay
+          # allocated outside requests and at least one instance must stay up to poll.
           gcloud run deploy "$CLOUD_RUN_SERVICE" \
             --project "$GCP_PROJECT_ID" \
             --region "$GCP_REGION" \
@@ -172,8 +170,10 @@ jobs:
             --port 8080 \
             --service-account "$RUNTIME_SA" \
             --allow-unauthenticated \
-            --set-env-vars "ASPNETCORE_URLS=http://+:8080,ASPNETCORE_ENVIRONMENT=Production,Features__EnableSwagger=false,Jwt__Issuer=Accounting.Api,Jwt__Audience=Accounting.Web,Jwt__AccessTokenMinutes=20,Jwt__RefreshTokenDays=30,Storage__Provider=${STORAGE_PROVIDER},Storage__UploadContainer=uploads,Storage__OutputContainer=outputs" \
-            --set-secrets "ConnectionStrings__Postgres=api-connection-string-postgres:latest,Jwt__SigningKey=api-jwt-signing-key:latest,Storage__AzureBlobConnectionString=api-storage-azure-blob-connection-string:latest" \
+            --no-cpu-throttling \
+            --min-instances=1 \
+            --set-env-vars "$ENV_VARS" \
+            --set-secrets "DATABASE_URL=api-database-url:latest,JWT_SIGNING_KEY=api-jwt-signing-key:latest,STORAGE_AZURE_BLOB_CONNECTION_STRING=api-storage-azure-blob-connection-string:latest,ANTHROPIC_API_KEY=api-anthropic-api-key:latest" \
             --quiet
 
       - name: Show Cloud Run URL

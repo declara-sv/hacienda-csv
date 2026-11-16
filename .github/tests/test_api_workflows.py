@@ -45,19 +45,33 @@ class WorkflowTests(unittest.TestCase):
                 text=True, capture_output=True, cwd=tmp)
             return result, output.read_text() if output.exists() else ''
 
-    def test_ci_covers_branches_and_runs_strict_build_and_tests(self):
+    def test_ci_covers_branches_and_runs_lint_and_tests(self):
         self.assertIn('on', self.ci, 'CI workflow must exist')
         self.assertEqual(self.ci['on']['push']['branches'], ['**'])
         for event in ('push', 'pull_request'):
-            for path in ('apps/api/**', 'global.json', '.github/workflows/**', '.github/tests/**'):
+            for path in ('apps/api/**', '.github/workflows/**', '.github/tests/**'):
                 self.assertIn(path, self.ci['on'][event]['paths'])
         self.assertEqual(self.ci['permissions'], {'contents': 'read'})
-        commands = '\n'.join(s.get('run', '') for s in self.ci['jobs']['test']['steps'])
-        for command in ('dotnet restore apps/api/Accounting.slnx',
-                        'dotnet build apps/api/Accounting.slnx --no-restore -warnaserror',
-                        'dotnet test apps/api/Accounting.Api.Tests --no-build',
-                        'python -m unittest discover -s .github/tests -v'):
-            self.assertIn(command, commands)
+        job = self.ci['jobs']['test']
+        steps = job['steps']
+        self.assertTrue(any(s.get('uses', '').startswith('astral-sh/setup-uv@v') for s in steps))
+        for command in ('uv sync --locked', 'uv run ruff check .', 'uv run pytest'):
+            step = next(s for s in steps if s.get('run') == command)
+            self.assertEqual(step['working-directory'], 'apps/api', command)
+        commands = '\n'.join(s.get('run', '') for s in steps)
+        self.assertIn('python -m unittest discover -s .github/tests -v', commands)
+
+    def test_ci_tests_run_against_postgres_service(self):
+        job = self.ci['jobs']['test']
+        postgres = job['services']['postgres']
+        self.assertEqual(postgres['image'], 'postgres:16')
+        self.assertIn('--health-cmd', postgres['options'])
+        env = postgres['env']
+        pytest = next(s for s in job['steps'] if s.get('run') == 'uv run pytest')
+        self.assertEqual(
+            pytest['env']['TEST_DATABASE_URL'],
+            f"postgresql+psycopg://{env['POSTGRES_USER']}:{env['POSTGRES_PASSWORD']}"
+            f"@localhost:{postgres['ports'][0].split(':')[0]}/{env['POSTGRES_DB']}")
 
     def test_all_jobs_use_blacksmith(self):
         for config in (self.ci, self.deploy):
@@ -72,6 +86,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse((WORKFLOWS / 'deploy-api-cloud-run.yml').exists())
         self.assertEqual(self.deploy['concurrency'],
                          {'group': 'deploy-api', 'cancel-in-progress': 'false', 'queue': 'max'})
+
+    def validated_secrets(self):
+        step = next(s for s in self.steps() if s.get('name') == 'Validate Secret Manager versions (metadata only)')
+        self.assertIn('gcloud secrets versions describe latest', step['run'])
+        self.assertNotIn('versions access', step['run'])
+        return step['run'].split('for secret in ', 1)[1].split(';', 1)[0].split()
 
     def test_tag_validation_rejects_malformed_or_injected_values(self):
         for value in ('main', '', 'api-v1.2', 'api-v01.2.3', 'api-v1.2.3-rc1',
@@ -96,21 +116,27 @@ class WorkflowTests(unittest.TestCase):
         result, _ = self.run_step('validate', env)
         self.assertEqual(result.returncode, 0, result.stderr)
         text = (WORKFLOWS / 'deploy-api.yml').read_text()
-        self.assertEqual(text.count('secrets.API_CONNECTION_STRING_POSTGRES'), 1)
-        self.assertNotIn('secrets.API_JWT_SIGNING_KEY', text)
-        self.assertNotIn('secrets.API_STORAGE_AZURE_BLOB_CONNECTION_STRING', text)
+        self.assertEqual(text.count('secrets.API_DATABASE_URL'), 1)
+        for retired in ('API_CONNECTION_STRING_POSTGRES', 'secrets.API_JWT_SIGNING_KEY',
+                        'secrets.API_STORAGE_AZURE_BLOB_CONNECTION_STRING', 'secrets.API_ANTHROPIC_API_KEY'):
+            self.assertNotIn(retired, text)
 
     def test_manual_dispatch_skips_build_and_migrations(self):
         steps = self.steps()
-        for id in ('docker-auth', 'builder', 'build', 'dotnet', 'bundle', 'migrate'):
+        for id in ('docker-auth', 'builder', 'build', 'migrate'):
             self.assertEqual(self.step(id)['if'], "github.event_name == 'push'", id)
-        self.assertLess(steps.index(self.step('migrate')), steps.index(self.step('deploy')))
+        for id in ('image', 'deploy'):
+            self.assertNotIn('if', self.step(id), id)  # default success() gate
+        # Migrations use the resolved digest, and must finish before the deploy.
+        order = [steps.index(self.step(id)) for id in ('build', 'image', 'migrate', 'deploy')]
+        self.assertEqual(order, sorted(order))
         for id in ('migrate', 'deploy'):
             self.assertNotIn('continue-on-error', self.step(id))
-        self.assertNotIn('if', self.step('deploy'))  # default success() gate
-        self.assertIn('--self-contained -r linux-x64 -o efbundle', self.step('bundle')['run'])
-        self.assertIn('./efbundle --connection "$CONNECTION_STRING"', self.step('migrate')['run'])
-        result, _ = self.run_step('migrate', {'CONNECTION_STRING': ''})
+        self.assertFalse(any(s.get('uses', '').startswith('actions/setup-dotnet@') for s in steps))
+        migrate = self.step('migrate')
+        self.assertEqual(migrate['env']['IMAGE_URI'], '${{ steps.image.outputs.uri }}')
+        self.assertIn('docker run --rm -e DATABASE_URL "$IMAGE_URI" alembic upgrade head', migrate['run'])
+        result, _ = self.run_step('migrate', {'DATABASE_URL': '', 'IMAGE_URI': 'image@sha256:x'})
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Missing', result.stdout + result.stderr)
 
@@ -126,24 +152,53 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(output.strip(), 'uri=' + env['IMAGE_TAG'].rsplit(':', 1)[0] + '@' + digest)
 
-    def test_bundle_failure_is_not_swallowed_and_connection_is_one_argument(self):
-        connection = 'Host=test;Password=spaces ; $literal and "quotes"'
-        script = '[[ "$#" == 2 && "$1" == --connection && "$2" == "$CONNECTION_STRING" ]] || exit 90\nexit 42'
-        result, _ = self.run_step('migrate', {'CONNECTION_STRING': connection}, {'efbundle': script})
+    def test_migration_failure_is_not_swallowed_and_url_stays_out_of_argv(self):
+        url = 'postgresql+psycopg://user:spaces ; $literal and "quotes"@host/db'
+        image = 'region-docker.pkg.dev/project/repo/accounting-api@sha256:' + 'a' * 64
+        script = ('expected=(run --rm -e DATABASE_URL "$IMAGE_URI" alembic upgrade head)\n'
+                  '[[ "$*" == "${expected[*]}" && "$*" != *"$DATABASE_URL"* ]] || exit 90\n'
+                  '[[ "$DATABASE_URL" == "$EXPECTED_URL" ]] || exit 91\n'
+                  'exit 42')
+        result, _ = self.run_step('migrate', {'DATABASE_URL': url, 'EXPECTED_URL': url, 'IMAGE_URI': image},
+                                  {'docker': script})
         self.assertEqual(result.returncode, 42, result.stderr)
-        self.assertNotIn(connection, result.stdout + result.stderr)
+        self.assertNotIn(url, result.stdout + result.stderr)
+
+    def test_release_image_builds_api_and_can_run_migrations(self):
+        build = self.step('build')['with']
+        self.assertEqual(build['context'], 'apps/api')
+        dockerfile = ROOT / build['file']
+        self.assertEqual(dockerfile, ROOT / 'apps/api/Dockerfile')
+        text = dockerfile.read_text()
+        self.assertIn('uv sync --frozen --no-dev', text)
+        for copied in ('COPY alembic.ini', 'COPY alembic ', 'COPY app '):
+            self.assertIn(copied, text)
+        self.assertIn('ENV PATH="/app/.venv/bin:', text)  # `alembic` resolves inside the image
+        self.assertRegex(text, r'(?m)^USER (?!root\b)\S+$')
+        self.assertIn('${PORT:-8080}', text)
 
     def test_deploy_uses_digest_and_secret_manager_not_plaintext(self):
         command = self.step('deploy')['run']
         self.assertIn('--image "$IMAGE_URI"', command)
-        self.assertIn('Features__EnableSwagger=false', command)
-        for env, secret in (
-            ('ConnectionStrings__Postgres', 'api-connection-string-postgres'),
-            ('Jwt__SigningKey', 'api-jwt-signing-key'),
-            ('Storage__AzureBlobConnectionString', 'api-storage-azure-blob-connection-string')):
-            self.assertIn(f'{env}={secret}:latest', command)
-            self.assertNotIn(f'--set-env-vars "{env}=', command)
-        self.assertIn('--set-secrets', command)
+        for env in ('ENVIRONMENT=Production', 'ENABLE_SWAGGER=false', 'WORKER_ENABLED=true',
+                    'STORAGE_PROVIDER=${STORAGE_PROVIDER}'):
+            self.assertIn(env, command)
+        self.assertNotIn('ENABLE_SWAGGER=true', command)
+        # The in-process worker needs CPU outside requests and a warm instance.
+        self.assertIn('--no-cpu-throttling', command)
+        self.assertIn('--min-instances=1', command)
+        secrets = dict(item.split('=', 1) for item in
+                       command.split('--set-secrets "', 1)[1].split('"', 1)[0].split(','))
+        self.assertEqual(secrets, {
+            'DATABASE_URL': 'api-database-url:latest',
+            'JWT_SIGNING_KEY': 'api-jwt-signing-key:latest',
+            'STORAGE_AZURE_BLOB_CONNECTION_STRING': 'api-storage-azure-blob-connection-string:latest',
+            'ANTHROPIC_API_KEY': 'api-anthropic-api-key:latest'})
+        env_vars = command.split('ENV_VARS="', 1)[1].split('"', 1)[0]
+        for name in secrets:
+            self.assertNotIn(f'{name}=', env_vars)
+        for secret in secrets.values():
+            self.assertIn(secret.removesuffix(':latest'), self.validated_secrets())
         self.assertIn('gcloud artifacts docker images describe', self.step('image')['run'])
         self.assertIn('@${DIGEST}', self.step('image')['run'])
         self.assertNotIn('|| true', self.step('image')['run'])
