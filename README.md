@@ -4,7 +4,7 @@ App contable (español-first) para contadores de El Salvador: lee los PDF de DTE
 los CSV de los anexos de ventas del F-07 (Anexo 1 y Anexo 2).
 
 ## Stack
-- Frontend: TanStack Start + TanStack Router + TanStack Query + TypeScript.
+- Frontend: TanStack Start + TanStack Router + TanStack Query + TypeScript (Node 26 LTS, pnpm 12, Vite 8).
 - Backend: Python 3.13 + FastAPI + SQLAlchemy 2 + Alembic + PostgreSQL (psycopg 3), gestionado con `uv`.
 - Auth: [Clerk](https://clerk.com) (identidad). Cuentas, membresías y uso viven en la base del API.
 - Storage: implementación Local o Azure Blob (`STORAGE_PROVIDER`).
@@ -141,13 +141,15 @@ uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --port 5184
 ```
 
-3. Frontend:
+3. Frontend (Node 26 fijado en `.node-version`/`.nvmrc`; `engines` rechaza otras versiones mayores):
 ```bash
+fnm use            # o nvm use
 cd apps/web
 cp .env.example .env
-pnpm install
+pnpm install       # un solo lockfile, en la raíz del repo
 pnpm dev
 ```
+Paquetes nuevos con scripts de instalación deben agregarse a `allowBuilds` en `pnpm-workspace.yaml`.
 
 4. Abrir:
 - Web: http://localhost:3000
@@ -247,6 +249,7 @@ Variables de entorno:
 2. `VITE_CLERK_PUBLISHABLE_KEY=<publishable key de Clerk>`
 3. `CLERK_PUBLISHABLE_KEY=<publishable key de Clerk>`
 4. `CLERK_SECRET_KEY=<secret key de Clerk>` (marcarla como sensible)
+5. `ENABLE_EXPERIMENTAL_COREPACK=1` (para que Vercel use pnpm 12 de `packageManager`; Node 26 se toma de `engines`)
 
 ### CI y releases del API
 

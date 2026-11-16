@@ -1,2 +1,7 @@
 packages:
-  - 'apps/web'
+  - "apps/web"
+
+# pnpm 11+ fails the install on unreviewed dependency build scripts.
+allowBuilds:
+  esbuild: true
+  unrs-resolver: false

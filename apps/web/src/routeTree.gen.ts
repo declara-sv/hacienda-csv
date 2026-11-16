@@ -9,25 +9,22 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as RegistroRouteImport } from './routes/registro'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as ClientesRouteImport } from './routes/clientes'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ClientesRouteImport } from './routes/clientes'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as RegistroRouteImport } from './routes/registro'
 import { Route as ClientesIndexRouteImport } from './routes/clientes.index'
-import { Route as RegistroSplatRouteImport } from './routes/registro.$'
-import { Route as LoginSplatRouteImport } from './routes/login.$'
 import { Route as ClientesClientIdRouteImport } from './routes/clientes.$clientId'
+import { Route as LoginIndexRouteImport } from './routes/login.index'
+import { Route as LoginSplatRouteImport } from './routes/login.$'
+import { Route as RegistroIndexRouteImport } from './routes/registro.index'
+import { Route as RegistroSplatRouteImport } from './routes/registro.$'
 import { Route as ClientesClientIdIndexRouteImport } from './routes/clientes.$clientId.index'
 import { Route as ClientesClientIdPeriodosPeriodIdCargasRouteImport } from './routes/clientes.$clientId.periodos.$periodId.cargas'
 
-const RegistroRoute = RegistroRouteImport.update({
-  id: '/registro',
-  path: '/registro',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ClientesRoute = ClientesRouteImport.update({
@@ -35,9 +32,14 @@ const ClientesRoute = ClientesRouteImport.update({
   path: '/clientes',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RegistroRoute = RegistroRouteImport.update({
+  id: '/registro',
+  path: '/registro',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ClientesIndexRoute = ClientesIndexRouteImport.update({
@@ -45,20 +47,30 @@ const ClientesIndexRoute = ClientesIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ClientesRoute,
 } as any)
-const RegistroSplatRoute = RegistroSplatRouteImport.update({
-  id: '/$',
-  path: '/$',
-  getParentRoute: () => RegistroRoute,
+const ClientesClientIdRoute = ClientesClientIdRouteImport.update({
+  id: '/$clientId',
+  path: '/$clientId',
+  getParentRoute: () => ClientesRoute,
+} as any)
+const LoginIndexRoute = LoginIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => LoginRoute,
 } as any)
 const LoginSplatRoute = LoginSplatRouteImport.update({
   id: '/$',
   path: '/$',
   getParentRoute: () => LoginRoute,
 } as any)
-const ClientesClientIdRoute = ClientesClientIdRouteImport.update({
-  id: '/$clientId',
-  path: '/$clientId',
-  getParentRoute: () => ClientesRoute,
+const RegistroIndexRoute = RegistroIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => RegistroRoute,
+} as any)
+const RegistroSplatRoute = RegistroSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => RegistroRoute,
 } as any)
 const ClientesClientIdIndexRoute = ClientesClientIdIndexRouteImport.update({
   id: '/',
@@ -81,16 +93,18 @@ export interface FileRoutesByFullPath {
   '/login/$': typeof LoginSplatRoute
   '/registro/$': typeof RegistroSplatRoute
   '/clientes/': typeof ClientesIndexRoute
+  '/login/': typeof LoginIndexRoute
+  '/registro/': typeof RegistroIndexRoute
   '/clientes/$clientId/': typeof ClientesClientIdIndexRoute
   '/clientes/$clientId/periodos/$periodId/cargas': typeof ClientesClientIdPeriodosPeriodIdCargasRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/login': typeof LoginRouteWithChildren
-  '/registro': typeof RegistroRouteWithChildren
   '/login/$': typeof LoginSplatRoute
   '/registro/$': typeof RegistroSplatRoute
   '/clientes': typeof ClientesIndexRoute
+  '/login': typeof LoginIndexRoute
+  '/registro': typeof RegistroIndexRoute
   '/clientes/$clientId': typeof ClientesClientIdIndexRoute
   '/clientes/$clientId/periodos/$periodId/cargas': typeof ClientesClientIdPeriodosPeriodIdCargasRoute
 }
@@ -104,6 +118,8 @@ export interface FileRoutesById {
   '/login/$': typeof LoginSplatRoute
   '/registro/$': typeof RegistroSplatRoute
   '/clientes/': typeof ClientesIndexRoute
+  '/login/': typeof LoginIndexRoute
+  '/registro/': typeof RegistroIndexRoute
   '/clientes/$clientId/': typeof ClientesClientIdIndexRoute
   '/clientes/$clientId/periodos/$periodId/cargas': typeof ClientesClientIdPeriodosPeriodIdCargasRoute
 }
@@ -118,16 +134,18 @@ export interface FileRouteTypes {
     | '/login/$'
     | '/registro/$'
     | '/clientes/'
+    | '/login/'
+    | '/registro/'
     | '/clientes/$clientId/'
     | '/clientes/$clientId/periodos/$periodId/cargas'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/login'
-    | '/registro'
     | '/login/$'
     | '/registro/$'
     | '/clientes'
+    | '/login'
+    | '/registro'
     | '/clientes/$clientId'
     | '/clientes/$clientId/periodos/$periodId/cargas'
   id:
@@ -140,6 +158,8 @@ export interface FileRouteTypes {
     | '/login/$'
     | '/registro/$'
     | '/clientes/'
+    | '/login/'
+    | '/registro/'
     | '/clientes/$clientId/'
     | '/clientes/$clientId/periodos/$periodId/cargas'
   fileRoutesById: FileRoutesById
@@ -153,18 +173,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/registro': {
-      id: '/registro'
-      path: '/registro'
-      fullPath: '/registro'
-      preLoaderRoute: typeof RegistroRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/clientes': {
@@ -174,11 +187,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/registro': {
+      id: '/registro'
+      path: '/registro'
+      fullPath: '/registro'
+      preLoaderRoute: typeof RegistroRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/clientes/': {
@@ -188,12 +208,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientesIndexRouteImport
       parentRoute: typeof ClientesRoute
     }
-    '/registro/$': {
-      id: '/registro/$'
-      path: '/$'
-      fullPath: '/registro/$'
-      preLoaderRoute: typeof RegistroSplatRouteImport
-      parentRoute: typeof RegistroRoute
+    '/clientes/$clientId': {
+      id: '/clientes/$clientId'
+      path: '/$clientId'
+      fullPath: '/clientes/$clientId'
+      preLoaderRoute: typeof ClientesClientIdRouteImport
+      parentRoute: typeof ClientesRoute
+    }
+    '/login/': {
+      id: '/login/'
+      path: '/'
+      fullPath: '/login/'
+      preLoaderRoute: typeof LoginIndexRouteImport
+      parentRoute: typeof LoginRoute
     }
     '/login/$': {
       id: '/login/$'
@@ -202,12 +229,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginSplatRouteImport
       parentRoute: typeof LoginRoute
     }
-    '/clientes/$clientId': {
-      id: '/clientes/$clientId'
-      path: '/$clientId'
-      fullPath: '/clientes/$clientId'
-      preLoaderRoute: typeof ClientesClientIdRouteImport
-      parentRoute: typeof ClientesRoute
+    '/registro/': {
+      id: '/registro/'
+      path: '/'
+      fullPath: '/registro/'
+      preLoaderRoute: typeof RegistroIndexRouteImport
+      parentRoute: typeof RegistroRoute
+    }
+    '/registro/$': {
+      id: '/registro/$'
+      path: '/$'
+      fullPath: '/registro/$'
+      preLoaderRoute: typeof RegistroSplatRouteImport
+      parentRoute: typeof RegistroRoute
     }
     '/clientes/$clientId/': {
       id: '/clientes/$clientId/'
@@ -256,20 +290,24 @@ const ClientesRouteWithChildren = ClientesRoute._addFileChildren(
 
 interface LoginRouteChildren {
   LoginSplatRoute: typeof LoginSplatRoute
+  LoginIndexRoute: typeof LoginIndexRoute
 }
 
 const LoginRouteChildren: LoginRouteChildren = {
   LoginSplatRoute: LoginSplatRoute,
+  LoginIndexRoute: LoginIndexRoute,
 }
 
 const LoginRouteWithChildren = LoginRoute._addFileChildren(LoginRouteChildren)
 
 interface RegistroRouteChildren {
   RegistroSplatRoute: typeof RegistroSplatRoute
+  RegistroIndexRoute: typeof RegistroIndexRoute
 }
 
 const RegistroRouteChildren: RegistroRouteChildren = {
   RegistroSplatRoute: RegistroSplatRoute,
+  RegistroIndexRoute: RegistroIndexRoute,
 }
 
 const RegistroRouteWithChildren = RegistroRoute._addFileChildren(
