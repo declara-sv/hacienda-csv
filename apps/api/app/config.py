@@ -27,11 +27,19 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:3000", "http://localhost:5173"]
     )
 
-    storage_provider: str = "Local"  # Local | AzureBlob
+    storage_provider: str = "Local"  # Local | AzureBlob | S3 (Supabase Storage, AWS S3, R2, ...)
     storage_upload_container: str = "uploads"
     storage_output_container: str = "outputs"
     storage_local_root_path: str = "App_Data/files"
     storage_azure_blob_connection_string: str = ""
+    # S3-compatible storage. For Supabase: endpoint https://<project-ref>.storage.supabase.co/storage/v1/s3,
+    # region = the project's region, keys from Storage > S3 Connection, and a private bucket.
+    storage_s3_endpoint_url: str = ""
+    storage_s3_region: str = ""
+    storage_s3_access_key_id: str = ""
+    storage_s3_secret_access_key: str = ""
+    storage_s3_bucket: str = ""
+    storage_s3_force_path_style: bool = True
 
     cors_allowed_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:3000", "http://localhost:5173"]

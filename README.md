@@ -58,9 +58,13 @@ Cada ajuste de `app/config.py` se lee de la variable con su nombre en mayúscula
 | `CLERK_ISSUER` | `https://exciting-gopher-5507.clerk.accounts.dev` | Instancia de Clerk (Frontend API URL); `iss` esperado |
 | `CLERK_JWKS_URL` | `{CLERK_ISSUER}/.well-known/jwks.json` | Solo si difiere del default |
 | `CLERK_AUTHORIZED_PARTIES` | `["http://localhost:3000","http://localhost:5173"]` | Lista JSON de orígenes aceptados en `azp` (más `*.vercel.app` si `CORS_ALLOW_VERCEL_SUBDOMAINS=true`) |
-| `STORAGE_PROVIDER` | `Local` | `Local` o `AzureBlob` |
+| `STORAGE_PROVIDER` | `Local` | `Local`, `AzureBlob` o `S3` (Supabase Storage u otro compatible con S3) |
 | `STORAGE_LOCAL_ROOT_PATH` | `App_Data/files` | Solo con `Local` |
 | `STORAGE_AZURE_BLOB_CONNECTION_STRING` | vacío | Solo con `AzureBlob` |
+| `STORAGE_S3_ENDPOINT_URL` / `STORAGE_S3_REGION` | vacío | Solo con `S3` |
+| `STORAGE_S3_ACCESS_KEY_ID` / `STORAGE_S3_SECRET_ACCESS_KEY` | vacío | Solo con `S3` (secretos) |
+| `STORAGE_S3_BUCKET` | vacío | Solo con `S3`; un bucket privado. `uploads/` y `outputs/` son prefijos dentro de él |
+| `STORAGE_S3_FORCE_PATH_STYLE` | `true` | Supabase requiere path-style |
 | `STORAGE_UPLOAD_CONTAINER` / `STORAGE_OUTPUT_CONTAINER` | `uploads` / `outputs` | |
 | `CORS_ALLOWED_ORIGINS` | `["http://localhost:3000","http://localhost:5173"]` | Lista JSON |
 | `CORS_ALLOW_VERCEL_SUBDOMAINS` | `true` | Acepta `https://*.vercel.app` (CORS y `azp` de Clerk) |
@@ -80,6 +84,18 @@ DATABASE_URL=postgresql+psycopg://kelvin@localhost:5432/accounting_dev
 Para Azure Blob:
 - `STORAGE_PROVIDER=AzureBlob`
 - `STORAGE_AZURE_BLOB_CONNECTION_STRING=<cadena>`
+
+Para Supabase Storage (S3):
+1. En Supabase: Storage > crear un bucket **privado** (p. ej. `hacienda-files`).
+2. Storage > Settings > S3 Connection: habilitar, copiar el endpoint y la región, y crear un access key.
+3. En `apps/api/.env`:
+   - `STORAGE_PROVIDER=S3`
+   - `STORAGE_S3_ENDPOINT_URL=https://<project-ref>.storage.supabase.co/storage/v1/s3`
+   - `STORAGE_S3_REGION=<región del proyecto>`
+   - `STORAGE_S3_BUCKET=hacienda-files`
+   - `STORAGE_S3_ACCESS_KEY_ID=...` y `STORAGE_S3_SECRET_ACCESS_KEY=...`
+
+Cambiar de proveedor no mueve los archivos ya guardados: cada archivo se lee del proveedor configurado.
 
 ## Autenticación (Clerk)
 

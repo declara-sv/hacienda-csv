@@ -1,4 +1,4 @@
-"""File storage for uploads and generated artifacts (local disk or Azure Blob)."""
+"""File storage for uploads and generated artifacts (local disk, Azure Blob, or S3-compatible)."""
 
 from __future__ import annotations
 
@@ -130,7 +130,114 @@ class AzureBlobFileStorage:
             blob.delete_blob()
 
 
+class S3FileStorage:
+    """S3-compatible object storage (Supabase Storage, AWS S3, Cloudflare R2, MinIO).
+
+    Everything lives in one bucket; the logical container ("uploads", "outputs") becomes the key prefix,
+    so the stored reference keeps the same (container, path) shape as the other providers.
+    """
+
+    provider_name = "S3"
+
+    def __init__(
+        self,
+        *,
+        bucket: str,
+        endpoint_url: str = "",
+        region: str = "",
+        access_key_id: str = "",
+        secret_access_key: str = "",
+        force_path_style: bool = True,
+        client=None,
+    ) -> None:
+        self._bucket = bucket
+        self._endpoint_url = endpoint_url
+        self._region = region
+        self._access_key_id = access_key_id
+        self._secret_access_key = secret_access_key
+        self._force_path_style = force_path_style
+        self._s3 = client
+
+    def _client(self):
+        if not self._bucket.strip():
+            raise RuntimeError("STORAGE_S3_BUCKET no está configurado.")
+        if self._s3 is None:
+            import boto3
+            from botocore.config import Config
+
+            self._s3 = boto3.client(
+                "s3",
+                endpoint_url=self._endpoint_url or None,
+                region_name=self._region or None,
+                aws_access_key_id=self._access_key_id or None,
+                aws_secret_access_key=self._secret_access_key or None,
+                config=Config(
+                    s3={"addressing_style": "path" if self._force_path_style else "auto"},
+                    retries={"max_attempts": 3, "mode": "standard"},
+                ),
+            )
+        return self._s3
+
+    @staticmethod
+    def _key(container: str, path: str) -> str:
+        key = f"{container.strip('/')}/{path.lstrip('/')}"
+        if ".." in key.split("/"):
+            raise ValueError("Ruta de archivo inválida.")
+        return key
+
+    @staticmethod
+    def _is_missing(error: Exception) -> bool:
+        code = getattr(error, "response", {}).get("Error", {}).get("Code")
+        return code in {"NoSuchKey", "404", "NotFound"}
+
+    def save(self, container: str, path: str, content: bytes, content_type: str) -> StoredFileReference:
+        self._client().put_object(
+            Bucket=self._bucket, Key=self._key(container, path), Body=content, ContentType=content_type
+        )
+        return StoredFileReference(self.provider_name, container, path)
+
+    def read(self, file: StoredFileReference) -> bytes | None:
+        from botocore.exceptions import ClientError
+
+        try:
+            response = self._client().get_object(
+                Bucket=self._bucket, Key=self._key(file.container, file.path)
+            )
+        except ClientError as error:
+            if self._is_missing(error):
+                return None
+            raise
+        return response["Body"].read()
+
+    def iter_chunks(self, file: StoredFileReference) -> Iterator[bytes] | None:
+        from botocore.exceptions import ClientError
+
+        try:
+            response = self._client().get_object(
+                Bucket=self._bucket, Key=self._key(file.container, file.path)
+            )
+        except ClientError as error:
+            if self._is_missing(error):
+                return None
+            raise
+        return response["Body"].iter_chunks(CHUNK_SIZE)
+
+    def delete(self, file: StoredFileReference) -> None:
+        # S3 DeleteObject succeeds for missing keys, matching the other providers.
+        self._client().delete_object(Bucket=self._bucket, Key=self._key(file.container, file.path))
+
+
 def build_storage(settings: Settings) -> FileStorage:
-    if settings.storage_provider.lower() == "azureblob":
+    provider = settings.storage_provider.strip().lower()
+    if provider == "azureblob":
         return AzureBlobFileStorage(settings.storage_azure_blob_connection_string)
+    if provider in {"s3", "supabase"}:
+        return S3FileStorage(
+            bucket=settings.storage_s3_bucket,
+            endpoint_url=settings.storage_s3_endpoint_url,
+            region=settings.storage_s3_region,
+            access_key_id=settings.storage_s3_access_key_id,
+            secret_access_key=settings.storage_s3_secret_access_key,
+            force_path_style=settings.storage_s3_force_path_style,
+        )
     return LocalFileStorage(settings.storage_local_root_path)

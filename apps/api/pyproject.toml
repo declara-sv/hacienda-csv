@@ -17,6 +17,7 @@ dependencies = [
     "pdfplumber>=0.11.4",
     "anthropic>=0.75",
     "azure-storage-blob>=12.24",
+    "boto3>=1.44.4",
 ]
 
 [dependency-groups]
@@ -26,6 +27,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "httpx2>=2.16.2",
+    "moto[s3]>=5.2.5",
 ]
 
 [tool.pytest.ini_options]
