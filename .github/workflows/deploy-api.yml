@@ -36,6 +36,8 @@ jobs:
       API_STORAGE_PROVIDER: ${{ vars.API_STORAGE_PROVIDER }}
       API_AI_EXTRACTION_ENABLED: ${{ vars.API_AI_EXTRACTION_ENABLED }}
       API_AI_EXTRACTION_MODEL: ${{ vars.API_AI_EXTRACTION_MODEL }}
+      API_CLERK_ISSUER: ${{ vars.API_CLERK_ISSUER }}
+      API_CLERK_AUTHORIZED_PARTIES: ${{ vars.API_CLERK_AUTHORIZED_PARTIES }}
 
     steps:
       - name: Validate release tag
@@ -63,12 +65,16 @@ jobs:
           SEC_GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
         run: |
           missing=0
-          for var in GCP_PROJECT_ID GCP_REGION GAR_REPOSITORY CLOUD_RUN_SERVICE SEC_GCP_WORKLOAD_IDENTITY_PROVIDER SEC_GCP_SERVICE_ACCOUNT; do
+          for var in GCP_PROJECT_ID GCP_REGION GAR_REPOSITORY CLOUD_RUN_SERVICE API_CLERK_ISSUER SEC_GCP_WORKLOAD_IDENTITY_PROVIDER SEC_GCP_SERVICE_ACCOUNT; do
             if [ -z "${!var}" ]; then
               echo "Missing configuration: $var"
               missing=1
             fi
           done
+          if [ -n "$API_CLERK_AUTHORIZED_PARTIES" ] && [[ ! "$API_CLERK_AUTHORIZED_PARTIES" =~ ^\[.*\]$ ]]; then
+            echo 'API_CLERK_AUTHORIZED_PARTIES must be a JSON list, e.g. ["https://app.example.com"]'
+            missing=1
+          fi
           if [ "$missing" -eq 1 ]; then
             exit 1
           fi
@@ -83,7 +89,7 @@ jobs:
 
       - name: Validate Secret Manager versions (metadata only)
         run: |
-          for secret in api-database-url api-jwt-signing-key api-storage-azure-blob-connection-string api-anthropic-api-key; do
+          for secret in api-database-url api-storage-azure-blob-connection-string api-anthropic-api-key; do
             STATE=$(gcloud secrets versions describe latest --secret "$secret" --project "$GCP_PROJECT_ID" --format='value(state)')
             if [ "$STATE" != ENABLED ]; then
               echo "Secret has no enabled latest version: $secret"
@@ -156,9 +162,20 @@ jobs:
           STORAGE_PROVIDER="${API_STORAGE_PROVIDER:-Local}"
           AI_ENABLED="${API_AI_EXTRACTION_ENABLED:-true}"
           RUNTIME_SA="${CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT:-cloud-run-runtime@${GCP_PROJECT_ID}.iam.gserviceaccount.com}"
-          ENV_VARS="ENVIRONMENT=Production,ENABLE_SWAGGER=false,WORKER_ENABLED=true,JWT_ISSUER=Accounting.Api,JWT_AUDIENCE=Accounting.Web,JWT_ACCESS_TOKEN_MINUTES=20,JWT_REFRESH_TOKEN_DAYS=30,STORAGE_PROVIDER=${STORAGE_PROVIDER},STORAGE_UPLOAD_CONTAINER=uploads,STORAGE_OUTPUT_CONTAINER=outputs,AI_EXTRACTION_ENABLED=${AI_ENABLED}"
+          # Variables are separated by `|` (gcloud's `^|^` delimiter syntax) because
+          # CLERK_AUTHORIZED_PARTIES is a JSON list that contains commas.
+          for value in "$STORAGE_PROVIDER" "$AI_ENABLED" "$API_AI_EXTRACTION_MODEL" "$API_CLERK_ISSUER" "$API_CLERK_AUTHORIZED_PARTIES"; do
+            if [[ "$value" == *"|"* ]]; then
+              echo 'Repository variables must not contain "|".'
+              exit 1
+            fi
+          done
+          ENV_VARS="ENVIRONMENT=Production|ENABLE_SWAGGER=false|WORKER_ENABLED=true|STORAGE_PROVIDER=${STORAGE_PROVIDER}|STORAGE_UPLOAD_CONTAINER=uploads|STORAGE_OUTPUT_CONTAINER=outputs|AI_EXTRACTION_ENABLED=${AI_ENABLED}|CLERK_ISSUER=${API_CLERK_ISSUER}"
+          if [ -n "$API_CLERK_AUTHORIZED_PARTIES" ]; then
+            ENV_VARS="${ENV_VARS}|CLERK_AUTHORIZED_PARTIES=${API_CLERK_AUTHORIZED_PARTIES}"
+          fi
           if [ -n "$API_AI_EXTRACTION_MODEL" ]; then
-            ENV_VARS="${ENV_VARS},AI_EXTRACTION_MODEL=${API_AI_EXTRACTION_MODEL}"
+            ENV_VARS="${ENV_VARS}|AI_EXTRACTION_MODEL=${API_AI_EXTRACTION_MODEL}"
           fi
           # The extraction/generation worker runs inside the API process, so CPU must stay
           # allocated outside requests and at least one instance must stay up to poll.
@@ -172,8 +189,8 @@ jobs:
             --allow-unauthenticated \
             --no-cpu-throttling \
             --min-instances=1 \
-            --set-env-vars "$ENV_VARS" \
-            --set-secrets "DATABASE_URL=api-database-url:latest,JWT_SIGNING_KEY=api-jwt-signing-key:latest,STORAGE_AZURE_BLOB_CONNECTION_STRING=api-storage-azure-blob-connection-string:latest,ANTHROPIC_API_KEY=api-anthropic-api-key:latest" \
+            --set-env-vars "^|^${ENV_VARS}" \
+            --set-secrets "DATABASE_URL=api-database-url:latest,STORAGE_AZURE_BLOB_CONNECTION_STRING=api-storage-azure-blob-connection-string:latest,ANTHROPIC_API_KEY=api-anthropic-api-key:latest" \
             --quiet
 
       - name: Show Cloud Run URL

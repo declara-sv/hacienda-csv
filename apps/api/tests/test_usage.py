@@ -28,11 +28,11 @@ def _events(db, event_type: str | None = None) -> list[UsageEvent]:
 
 
 def _user_id(user: ApiUser) -> uuid.UUID:
-    return uuid.UUID(user.auth["user"]["id"])
+    return uuid.UUID(user.id)
 
 
 def _account_id(user: ApiUser) -> uuid.UUID:
-    return uuid.UUID(user.auth["user"]["account"]["id"])
+    return uuid.UUID(user.account_id)
 
 
 def _ai_call(model: str = "claude-opus-5-5", outcome: str = "used", **tokens) -> dict:

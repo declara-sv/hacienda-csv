@@ -2,17 +2,23 @@ export type GenerationRunStatus = 'Pending' | 'Running' | 'Completed' | 'Failed'
 export type GenerationRunFileStatus = 'Pending' | 'Included' | 'Failed'
 export type ExtractionStatus = 'Pending' | 'Running' | 'Completed' | 'Failed'
 
-export type AuthUser = {
+/** Identity from Clerk as the API records it. */
+export type CurrentUser = {
   id: string
   email: string
   fullName: string
 }
 
-export type AuthSession = {
-  accessToken: string
-  accessTokenExpiresAtUtc: string
-  refreshToken: string
-  user: AuthUser
+/** The API's own account the signed-in user belongs to. */
+export type CurrentAccount = {
+  id: string
+  name: string
+  role: string
+}
+
+export type MeResponse = {
+  user: CurrentUser
+  account: CurrentAccount
 }
 
 export type ClientSummary = {

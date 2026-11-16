@@ -2,41 +2,14 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi.testclient import TestClient
-from sqlalchemy import select
-
-from app.models import Account, AccountMember, Client
-from tests.helpers import PASSWORD, ApiUser
-
-
-def test_register_creates_account_with_owner_membership(client: TestClient, db) -> None:
-    response = client.post(
-        "/api/auth/register",
-        json={"email": "firma@test.local", "password": PASSWORD, "fullName": " Contadores Pérez "},
-    )
-    assert response.status_code == 201
-    user = response.json()["user"]
-
-    (member,) = db.scalars(select(AccountMember).where(AccountMember.user_id == uuid.UUID(user["id"])))
-    account = db.get(Account, member.account_id)
-    assert account.name == "Contadores Pérez"
-    assert member.role == "Owner"
-    assert user["account"] == {"id": str(account.id), "name": "Contadores Pérez", "role": "Owner"}
-
-
-def test_login_and_refresh_return_the_default_account(client: TestClient, user: ApiUser) -> None:
-    email = f"login-{uuid.uuid4().hex}@test.local"
-    registered = ApiUser.register(client, email)
-    login = client.post("/api/auth/login", json={"email": email, "password": PASSWORD}).json()
-    assert login["user"]["account"] == registered.auth["user"]["account"]
-    refreshed = client.post("/api/auth/refresh", json={"refreshToken": login["refreshToken"]}).json()
-    assert refreshed["user"]["account"]["id"] == registered.auth["user"]["account"]["id"]
+from app.models import AccountMember, Client
+from tests.helpers import ApiUser
 
 
 def test_clients_belong_to_the_account(user: ApiUser, db) -> None:
     client_id = user.create_client()
     client = db.get(Client, uuid.UUID(client_id))
-    assert str(client.account_id) == user.auth["user"]["account"]["id"]
+    assert str(client.account_id) == user.account_id
 
 
 def test_users_of_different_accounts_cannot_see_each_others_clients(
@@ -53,7 +26,7 @@ def test_users_of_different_accounts_cannot_see_each_others_clients(
 
 def test_foreign_account_header_is_rejected(user: ApiUser, other_user: ApiUser) -> None:
     user.create_client()
-    foreign = user.auth["user"]["account"]["id"]
+    foreign = user.account_id
     response = other_user.http.get("/api/clients", headers={**other_user.headers, "X-Account-Id": foreign})
     assert response.status_code == 403
     assert response.json()["title"] == "No tiene acceso a esta cuenta."
@@ -72,7 +45,7 @@ def test_malformed_account_header_is_400(user: ApiUser) -> None:
 
 def test_own_account_header_is_accepted(user: ApiUser) -> None:
     user.create_client()
-    own = user.auth["user"]["account"]["id"]
+    own = user.account_id
     response = user.http.get("/api/clients", headers={**user.headers, "X-Account-Id": own})
     assert response.status_code == 200
     assert len(response.json()) == 1
@@ -82,8 +55,8 @@ def test_member_of_a_second_account_can_switch_with_the_header(
     user: ApiUser, other_user: ApiUser, db
 ) -> None:
     shared_client = user.create_client(name="Cliente de la firma")
-    firm = uuid.UUID(user.auth["user"]["account"]["id"])
-    db.add(AccountMember(account_id=firm, user_id=uuid.UUID(other_user.auth["user"]["id"]), role="Member"))
+    firm = uuid.UUID(user.account_id)
+    db.add(AccountMember(account_id=firm, user_id=uuid.UUID(other_user.id), role="Member"))
     db.commit()
 
     # Without the header the earliest membership (their own account) is used.
@@ -92,3 +65,15 @@ def test_member_of_a_second_account_can_switch_with_the_header(
     listed = other_user.http.get("/api/clients", headers=headers).json()
     assert [c["id"] for c in listed] == [shared_client]
     assert other_user.http.get(f"/api/clients/{shared_client}", headers=headers).status_code == 200
+
+
+def test_me_reports_the_account_selected_by_the_header(user: ApiUser, other_user: ApiUser, db) -> None:
+    firm = uuid.UUID(user.account_id)
+    db.add(AccountMember(account_id=firm, user_id=uuid.UUID(other_user.id), role="Member"))
+    db.commit()
+
+    own = other_user.get("/api/me").json()["account"]
+    assert own == {"id": other_user.account_id, "name": "Test User", "role": "Owner"}
+    switched = other_user.http.get("/api/me", headers={**other_user.headers, "X-Account-Id": str(firm)})
+    assert switched.status_code == 200
+    assert switched.json()["account"] == {"id": str(firm), "name": "Test User", "role": "Member"}

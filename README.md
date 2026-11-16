@@ -6,7 +6,7 @@ los CSV de los anexos de ventas del F-07 (Anexo 1 y Anexo 2).
 ## Stack
 - Frontend: TanStack Start + TanStack Router + TanStack Query + TypeScript.
 - Backend: Python 3.13 + FastAPI + SQLAlchemy 2 + Alembic + PostgreSQL (psycopg 3), gestionado con `uv`.
-- Auth: email/password + JWT access/refresh.
+- Auth: [Clerk](https://clerk.com) (identidad). Cuentas, membresías y uso viven en la base del API.
 - Storage: implementación Local o Azure Blob (`STORAGE_PROVIDER`).
 - Extracción: parser determinístico para la plantilla de DTE del MH + IA (Claude) de respaldo, opcional.
 - Worker: hilo dentro del proceso del API; reclama trabajos con `FOR UPDATE SKIP LOCKED`.
@@ -37,7 +37,14 @@ docker-compose.yml      # PostgreSQL local opcional
 ### Frontend (`apps/web/.env`)
 ```env
 VITE_API_URL=http://localhost:5184
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
 ```
+
+`VITE_CLERK_PUBLISHABLE_KEY` la usa el navegador; `CLERK_PUBLISHABLE_KEY` y `CLERK_SECRET_KEY` el
+servidor (SSR). Las dos publishable keys tienen el mismo valor. `CLERK_SECRET_KEY` es secreta: no
+commitearla ni exponerla con prefijo `VITE_`.
 
 ### API (`apps/api/.env` o entorno shell)
 
@@ -48,15 +55,15 @@ Cada ajuste de `app/config.py` se lee de la variable con su nombre en mayúscula
 |---|---|---|
 | `ENVIRONMENT` | `Development` | `Production` en Cloud Run |
 | `DATABASE_URL` | `postgresql+psycopg://postgres:postgres@localhost:5432/accounting_dev` | API y Alembic |
-| `JWT_SIGNING_KEY` | marcador | Obligatorio cambiarlo fuera de desarrollo (32+ caracteres) |
-| `JWT_ISSUER` / `JWT_AUDIENCE` | `Accounting.Api` / `Accounting.Web` | |
-| `JWT_ACCESS_TOKEN_MINUTES` / `JWT_REFRESH_TOKEN_DAYS` | `20` / `30` | |
+| `CLERK_ISSUER` | `https://exciting-gopher-5507.clerk.accounts.dev` | Instancia de Clerk (Frontend API URL); `iss` esperado |
+| `CLERK_JWKS_URL` | `{CLERK_ISSUER}/.well-known/jwks.json` | Solo si difiere del default |
+| `CLERK_AUTHORIZED_PARTIES` | `["http://localhost:3000","http://localhost:5173"]` | Lista JSON de orígenes aceptados en `azp` (más `*.vercel.app` si `CORS_ALLOW_VERCEL_SUBDOMAINS=true`) |
 | `STORAGE_PROVIDER` | `Local` | `Local` o `AzureBlob` |
 | `STORAGE_LOCAL_ROOT_PATH` | `App_Data/files` | Solo con `Local` |
 | `STORAGE_AZURE_BLOB_CONNECTION_STRING` | vacío | Solo con `AzureBlob` |
 | `STORAGE_UPLOAD_CONTAINER` / `STORAGE_OUTPUT_CONTAINER` | `uploads` / `outputs` | |
 | `CORS_ALLOWED_ORIGINS` | `["http://localhost:3000","http://localhost:5173"]` | Lista JSON |
-| `CORS_ALLOW_VERCEL_SUBDOMAINS` | `true` | Acepta `*.vercel.app` |
+| `CORS_ALLOW_VERCEL_SUBDOMAINS` | `true` | Acepta `https://*.vercel.app` (CORS y `azp` de Clerk) |
 | `ENABLE_SWAGGER` | `false` | Swagger UI en `/swagger`; siempre `false` en producción |
 | `WORKER_ENABLED` | `true` | Worker en el proceso del API |
 | `WORKER_POLL_INTERVAL_SECONDS` / `WORKER_RUN_TIMEOUT_MINUTES` | `3` / `10` | |
@@ -73,6 +80,44 @@ DATABASE_URL=postgresql+psycopg://kelvin@localhost:5432/accounting_dev
 Para Azure Blob:
 - `STORAGE_PROVIDER=AzureBlob`
 - `STORAGE_AZURE_BLOB_CONNECTION_STRING=<cadena>`
+
+## Autenticación (Clerk)
+
+Clerk maneja el inicio de sesión. La web obtiene el session token con `getToken()` y lo envía en cada
+llamada como `Authorization: Bearer <token>`; Clerk lo renueva solo, así que el API no tiene endpoints de
+login, refresh ni logout. El API verifica el token con el JWKS de `CLERK_ISSUER` (RS256, firma, `exp`/`nbf`
+con 30 s de tolerancia, `iss`, `sub` y, si viene, `azp`) y responde 401 si algo falla.
+
+En la primera petición de un usuario de Clerk el API crea su usuario, una cuenta con su nombre y la
+membresía `Owner`. `GET /api/me` devuelve `{user: {id, email, fullName}, account: {id, name, role}}`.
+
+### Configurar el dashboard de Clerk
+
+1. **API keys** (Configure > API keys): copiar la publishable key (`pk_test_...`) a
+   `VITE_CLERK_PUBLISHABLE_KEY` y `CLERK_PUBLISHABLE_KEY`, y la secret key (`sk_test_...`) a
+   `CLERK_SECRET_KEY`. En la misma página está la **Frontend API URL**: es el valor de `CLERK_ISSUER`.
+2. **Claims del session token** (Configure > Sessions > Customize session token), pegar:
+   ```json
+   {
+     "email": "{{user.primary_email_address}}",
+     "name": "{{user.full_name}}"
+   }
+   ```
+   Son opcionales para el API: sin `name` usa el correo (o `Usuario`) y sin `email` lo deja vacío. Cuando
+   cambian, el API actualiza el usuario en la siguiente petición. El nombre de la cuenta se fija al crearla.
+3. **Métodos de inicio de sesión** (Configure > User & authentication): habilitar los que se usarán
+   (por ejemplo correo con código o contraseña y Google) y deshabilitar el resto.
+4. **Orígenes permitidos**: el API acepta en `azp` los orígenes de `CLERK_AUTHORIZED_PARTIES` y, con
+   `CORS_ALLOW_VERCEL_SUBDOMAINS=true`, cualquier `https://*.vercel.app`. Agregar el dominio propio de la
+   web a `CLERK_AUTHORIZED_PARTIES` (y a `CORS_ALLOWED_ORIGINS`).
+5. **Rutas** (Configure > Paths): inicio de sesión `<origen>/login`, registro `<origen>/registro`,
+   después de cerrar sesión `/login`. La web ya pasa estas rutas en el código; esto alinea los correos y
+   enlaces que envía Clerk.
+
+La instancia actual es de desarrollo (`*.clerk.accounts.dev`). Una instancia de **producción** de Clerk
+requiere un dominio propio (registros DNS que Clerk indica); al crearla cambian las llaves (`pk_live_...`,
+`sk_live_...`) y `CLERK_ISSUER` (por ejemplo `https://clerk.tu-dominio.com`), y los usuarios de la
+instancia de desarrollo no se copian.
 
 ## Levantar proyecto local
 
@@ -134,10 +179,7 @@ Revisar siempre el archivo generado en `alembic/versions/` antes de commitearlo.
 
 ## Endpoints principales
 
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/refresh`
-- `POST /api/auth/logout`
+- `GET /api/me` (usuario actual y cuenta actual con su rol)
 - `GET/POST/PUT/DELETE /api/clients` (incluye `nit`, `nrc` y códigos de Renta por defecto)
 - `GET/POST /api/clients/{clientId}/configs`
 - `GET/POST /api/clients/{clientId}/periods`
@@ -152,7 +194,7 @@ Revisar siempre el archivo generado en `alembic/versions/` antes de commitearlo.
 - `GET /api/artifacts/{artifactId}/download`
 - `GET /api/usage?year=AAAA&month=M` (uso del mes de la cuenta actual, por cliente y total)
 
-Todos los recursos pertenecen a la cuenta del usuario (creada al registrarse). El encabezado opcional
+Todos los recursos pertenecen a la cuenta del usuario (creada en su primera petición). El encabezado opcional
 `X-Account-Id` elige otra cuenta de la que el usuario sea miembro (403 si no lo es).
 
 ## Extracción de DTE
@@ -202,6 +244,9 @@ Configura el proyecto en Vercel así:
 
 Variables de entorno:
 1. `VITE_API_URL=<URL pública del API en Cloud Run>`
+2. `VITE_CLERK_PUBLISHABLE_KEY=<publishable key de Clerk>`
+3. `CLERK_PUBLISHABLE_KEY=<publishable key de Clerk>`
+4. `CLERK_SECRET_KEY=<secret key de Clerk>` (marcarla como sensible)
 
 ### CI y releases del API
 
@@ -219,7 +264,7 @@ en Vercel. Todos los jobs del API usan `blacksmith-2vcpu-ubuntu-2404`.
 3. Permitir en WIF los refs `refs/tags/api-v*` del repositorio, además de `refs/heads/main`
    para dispatch. Si la condición actual está limitada a `main`, los tags no autenticarán.
    Restringir siempre al repositorio confiable; proteger los tags `api-v*` contra cambios/borrado.
-4. Crear los cuatro secretos siguientes en Secret Manager en `GCP_PROJECT_ID`, con una
+4. Crear los tres secretos siguientes en Secret Manager en `GCP_PROJECT_ID`, con una
    versión `latest` habilitada. Otorgar `roles/secretmanager.secretAccessor` a la cuenta
    **runtime** sobre cada secreto. La cuenta **de despliegue** necesita
    `roles/secretmanager.viewer` sobre ellos para validar metadatos; el workflow no lee payloads.
@@ -227,17 +272,17 @@ en Vercel. Todos los jobs del API usan `blacksmith-2vcpu-ubuntu-2404`.
    | Variable en Cloud Run | Nombre del secreto |
    |---|---|
    | `DATABASE_URL` | `api-database-url` |
-   | `JWT_SIGNING_KEY` | `api-jwt-signing-key` |
    | `STORAGE_AZURE_BLOB_CONNECTION_STRING` | `api-storage-azure-blob-connection-string` |
    | `ANTHROPIC_API_KEY` | `api-anthropic-api-key` |
 
-   Los cuatro son obligatorios. `DATABASE_URL` usa el formato
+   Los tres son obligatorios. `DATABASE_URL` usa el formato
    `postgresql+psycopg://usuario:clave@host:5432/base?sslmode=require` (codificar caracteres
    especiales de la clave). Con storage Local, el secreto Azure puede tener un valor de marcador
    (no se consume); AzureBlob es recomendado: el filesystem de Cloud Run es efímero. Sin IA de
    respaldo, poner un marcador en `api-anthropic-api-key` y la variable `API_AI_EXTRACTION_ENABLED=false`.
    `latest` se resuelve al arrancar cada instancia; una rotación aplica también a nuevos arranques
-   de revisiones anteriores.
+   de revisiones anteriores. El secreto `api-jwt-signing-key` ya no se usa (la autenticación es con
+   Clerk) y puede borrarse después del primer deploy con Clerk.
 5. Copiar la **misma URL de la misma base** a `API_DATABASE_URL` en GitHub Secrets: solo la usa el
    paso de migración, fuera de Cloud Run. Postgres debe ser alcanzable desde Blacksmith y la
    conexión debe tener permisos DDL y TLS según el proveedor. No imprimir valores ni pasarlos como
@@ -257,6 +302,13 @@ Variables de repositorio (Settings > Secrets and variables > Actions > Variables
 - `API_STORAGE_PROVIDER` (opcional, `AzureBlob` recomendado; default `Local`)
 - `API_AI_EXTRACTION_ENABLED` (opcional; default `true`)
 - `API_AI_EXTRACTION_MODEL` (opcional; default el de `app/config.py`)
+- `API_CLERK_ISSUER` (obligatoria; Frontend API URL de la instancia de Clerk, p. ej.
+  `https://exciting-gopher-5507.clerk.accounts.dev`)
+- `API_CLERK_AUTHORIZED_PARTIES` (opcional; lista JSON de orígenes de la web, p. ej.
+  `["https://app.tu-dominio.com"]`; default los de `localhost`, y `*.vercel.app` siempre se acepta
+  mientras `CORS_ALLOW_VERCEL_SUBDOMAINS` esté activo)
+
+Las variables del deploy no pueden contener `|` (es el separador que usa el workflow con `gcloud`).
 
 Secrets de repositorio:
 - `GCP_WORKLOAD_IDENTITY_PROVIDER`

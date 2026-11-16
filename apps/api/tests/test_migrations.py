@@ -11,7 +11,6 @@ def test_migrations_create_every_table_and_match_the_models(engine: Engine) -> N
     tables = set(inspect(engine).get_table_names())
     assert {
         "users",
-        "refresh_tokens",
         "clients",
         "client_configs",
         "filing_periods",

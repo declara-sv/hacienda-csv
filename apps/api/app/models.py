@@ -76,25 +76,16 @@ class UsageEventType(StrEnum):
 
 
 class User(Base):
+    """A person signed in through Clerk. Identity comes from Clerk; tenancy from `account_members`."""
+
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String(320))
-    normalized_email: Mapped[str] = mapped_column(String(320), unique=True)
+    clerk_user_id: Mapped[str] = mapped_column(String(100), unique=True)
+    # From the optional `email` / `name` session-token claims; refreshed on every request.
+    email: Mapped[str | None] = mapped_column(String(320), index=True)
     full_name: Mapped[str] = mapped_column(String(200))
-    password_hash: Mapped[str] = mapped_column(String(2048))
     created_at_utc: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
-
-class RefreshToken(Base):
-    __tablename__ = "refresh_tokens"
-
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    token_hash: Mapped[str] = mapped_column(String(200), unique=True)
-    created_at_utc: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    expires_at_utc: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
-    revoked_at_utc: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Account(Base):

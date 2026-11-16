@@ -1,24 +1,9 @@
-import { Navigate, Outlet, createFileRoute } from '@tanstack/react-router'
-import { useAuth } from '#/auth/AuthContext'
-import { PageSkeleton } from '#/components/ui/Skeleton'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { SIGN_IN_PATH } from '#/auth/paths'
+import { isSignedIn } from '#/auth/session'
 
-export const Route = createFileRoute('/clientes')({ component: ClientsLayout })
-
-function ClientsLayout() {
-  const { ready, session } = useAuth()
-
-  if (!ready) {
-    return <PageSkeleton />
-  }
-
-  if (!session) {
-    return (
-      <>
-        <PageSkeleton />
-        <Navigate to="/login" replace />
-      </>
-    )
-  }
-
-  return <Outlet />
-}
+export const Route = createFileRoute('/clientes')({
+  beforeLoad: async () => {
+    if (!(await isSignedIn())) throw redirect({ to: SIGN_IN_PATH })
+  },
+})

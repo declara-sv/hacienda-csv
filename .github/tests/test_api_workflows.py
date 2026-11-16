@@ -108,16 +108,25 @@ class WorkflowTests(unittest.TestCase):
 
     def test_configuration_validation_and_secret_scope(self):
         env = {key: 'configured' for key in (
-            'GCP_PROJECT_ID', 'GCP_REGION', 'GAR_REPOSITORY', 'CLOUD_RUN_SERVICE',
+            'GCP_PROJECT_ID', 'GCP_REGION', 'GAR_REPOSITORY', 'CLOUD_RUN_SERVICE', 'API_CLERK_ISSUER',
             'SEC_GCP_WORKLOAD_IDENTITY_PROVIDER', 'SEC_GCP_SERVICE_ACCOUNT')}
+        env['API_CLERK_AUTHORIZED_PARTIES'] = ''
         for key in env:
+            if key == 'API_CLERK_AUTHORIZED_PARTIES':
+                continue
             result, _ = self.run_step('validate', {**env, key: ''})
             self.assertNotEqual(result.returncode, 0, key)
         result, _ = self.run_step('validate', env)
         self.assertEqual(result.returncode, 0, result.stderr)
+        # Authorized parties are optional, but must be a JSON list when set.
+        for parties, ok in (('["https://app.example.com","https://www.example.com"]', True),
+                            ('https://app.example.com', False)):
+            result, _ = self.run_step('validate', {**env, 'API_CLERK_AUTHORIZED_PARTIES': parties})
+            self.assertEqual(result.returncode == 0, ok, parties)
         text = (WORKFLOWS / 'deploy-api.yml').read_text()
         self.assertEqual(text.count('secrets.API_DATABASE_URL'), 1)
-        for retired in ('API_CONNECTION_STRING_POSTGRES', 'secrets.API_JWT_SIGNING_KEY',
+        for retired in ('API_CONNECTION_STRING_POSTGRES', 'secrets.API_JWT_SIGNING_KEY', 'api-jwt-signing-key',
+                        'JWT_SIGNING_KEY', 'JWT_ISSUER', 'JWT_AUDIENCE',
                         'secrets.API_STORAGE_AZURE_BLOB_CONNECTION_STRING', 'secrets.API_ANTHROPIC_API_KEY'):
             self.assertNotIn(retired, text)
 
@@ -191,7 +200,6 @@ class WorkflowTests(unittest.TestCase):
                        command.split('--set-secrets "', 1)[1].split('"', 1)[0].split(','))
         self.assertEqual(secrets, {
             'DATABASE_URL': 'api-database-url:latest',
-            'JWT_SIGNING_KEY': 'api-jwt-signing-key:latest',
             'STORAGE_AZURE_BLOB_CONNECTION_STRING': 'api-storage-azure-blob-connection-string:latest',
             'ANTHROPIC_API_KEY': 'api-anthropic-api-key:latest'})
         env_vars = command.split('ENV_VARS="', 1)[1].split('"', 1)[0]
@@ -199,9 +207,52 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn(f'{name}=', env_vars)
         for secret in secrets.values():
             self.assertIn(secret.removesuffix(':latest'), self.validated_secrets())
+        self.assertEqual(len(self.validated_secrets()), len(secrets))
         self.assertIn('gcloud artifacts docker images describe', self.step('image')['run'])
         self.assertIn('@${DIGEST}', self.step('image')['run'])
         self.assertNotIn('|| true', self.step('image')['run'])
+
+    def deploy_env_vars(self, env):
+        """Run the deploy step with a fake gcloud; return the parsed `--set-env-vars` mapping."""
+        script = ('for arg in "$@"; do\n'
+                  '  if [ "$prev" = --set-env-vars ]; then printf %s "$arg" > "$CAPTURE"; fi\n'
+                  '  prev="$arg"\n'
+                  'done\n')
+        with tempfile.TemporaryDirectory() as tmp:
+            capture = Path(tmp) / 'env-vars'
+            base = {'IMAGE_URI': 'image@sha256:x', 'GCP_PROJECT_ID': 'project', 'GCP_REGION': 'region',
+                    'CLOUD_RUN_SERVICE': 'svc', 'CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT': '',
+                    'API_STORAGE_PROVIDER': '', 'API_AI_EXTRACTION_ENABLED': '',
+                    'API_AI_EXTRACTION_MODEL': '', 'API_CLERK_ISSUER': '',
+                    'API_CLERK_AUTHORIZED_PARTIES': '', 'CAPTURE': str(capture)}
+            result, _ = self.run_step('deploy', {**base, **env}, {'gcloud': script})
+            raw = capture.read_text() if capture.exists() else None
+        if result.returncode != 0:
+            return result, None
+        self.assertTrue(raw.startswith('^|^'), raw)
+        return result, dict(item.split('=', 1) for item in raw.removeprefix('^|^').split('|'))
+
+    def test_deploy_passes_clerk_settings_as_plain_env(self):
+        parties = '["https://app.example.com","https://my-app.vercel.app"]'
+        result, env_vars = self.deploy_env_vars({
+            'API_CLERK_ISSUER': 'https://clerk.example.com', 'API_CLERK_AUTHORIZED_PARTIES': parties})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(env_vars['CLERK_ISSUER'], 'https://clerk.example.com')
+        self.assertEqual(env_vars['CLERK_AUTHORIZED_PARTIES'], parties)
+        self.assertEqual(env_vars['ENVIRONMENT'], 'Production')
+        self.assertEqual(env_vars['STORAGE_PROVIDER'], 'Local')
+        self.assertFalse(any(name.startswith('JWT_') for name in env_vars))
+
+        result, env_vars = self.deploy_env_vars({'API_CLERK_ISSUER': 'https://clerk.example.com'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('CLERK_AUTHORIZED_PARTIES', env_vars)  # app default applies
+
+        result, _ = self.deploy_env_vars({'API_CLERK_ISSUER': 'https://clerk.example.com|EVIL=1'})
+        self.assertNotEqual(result.returncode, 0)
+
+        workflow_env = self.deploy['jobs']['deploy']['env']
+        self.assertEqual(workflow_env['API_CLERK_ISSUER'], '${{ vars.API_CLERK_ISSUER }}')
+        self.assertEqual(workflow_env['API_CLERK_AUTHORIZED_PARTIES'], '${{ vars.API_CLERK_AUTHORIZED_PARTIES }}')
 
 
 if __name__ == '__main__':

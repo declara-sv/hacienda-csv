@@ -1,7 +1,6 @@
-import { clearSession, readSession, writeSession } from '#/auth/auth-storage'
+import { getToken } from '@clerk/tanstack-react-start'
 import { normalizeDocument, normalizeRun, normalizeUpload } from './normalize'
 import type {
-  AuthSession,
   ClientDetail,
   ClientPayload,
   ClientSummary,
@@ -9,6 +8,7 @@ import type {
   DocumentDto,
   DocumentPatch,
   GenerationRun,
+  MeResponse,
   RentaCatalog,
   Upload,
 } from './api-types'
@@ -25,8 +25,6 @@ export class ApiError extends Error {
     this.details = details
   }
 }
-
-let refreshPromise: Promise<AuthSession | null> | null = null
 
 /**
  * ValidationProblemDetails carries the human message in `errors`; its `title`
@@ -70,81 +68,69 @@ async function parseError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, messageFromServer, payload)
 }
 
-async function refreshSession(
-  current: AuthSession,
-): Promise<AuthSession | null> {
-  if (!refreshPromise) {
-    refreshPromise = (async () => {
-      try {
-        const response = await fetch(`${API_URL}/api/auth/refresh`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ refreshToken: current.refreshToken }),
-        })
+type UnauthorizedHandler = () => void | Promise<void>
 
-        if (!response.ok) {
-          clearSession()
-          return null
-        }
-
-        const next = (await response.json()) as AuthSession
-        writeSession(next)
-        return next
-      } catch {
-        clearSession()
-        return null
-      } finally {
-        refreshPromise = null
-      }
-    })()
+/** Used until the app registers a router-aware handler (see ClerkSessionBridge). */
+const defaultUnauthorizedHandler: UnauthorizedHandler = () => {
+  if (typeof window !== 'undefined') {
+    window.location.assign('/login')
   }
-
-  return refreshPromise
 }
 
-async function request<T>(
-  path: string,
-  init: RequestInit = {},
-  options: { authenticated?: boolean } = {},
-): Promise<T> {
-  const authenticated = options.authenticated ?? true
-  const headers = new Headers(init.headers)
+let unauthorizedHandler: UnauthorizedHandler = defaultUnauthorizedHandler
+let unauthorizedInFlight: Promise<void> | null = null
 
+/**
+ * Sets what happens when the API answers 401 (missing or invalid Clerk token).
+ * Returns a function that restores the default handler.
+ */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler) {
+  unauthorizedHandler = handler
+  return () => {
+    if (unauthorizedHandler === handler) {
+      unauthorizedHandler = defaultUnauthorizedHandler
+    }
+  }
+}
+
+/** Runs the handler once even when several requests fail together. */
+function notifyUnauthorized() {
+  if (!unauthorizedInFlight) {
+    unauthorizedInFlight = Promise.resolve()
+      .then(() => unauthorizedHandler())
+      .catch(() => undefined)
+      .finally(() => {
+        unauthorizedInFlight = null
+      })
+  }
+  return unauthorizedInFlight
+}
+
+/** Fetches with the current Clerk session token; Clerk refreshes it itself. */
+async function authorizedFetch(path: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers)
+  const token = await getToken()
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  const response = await fetch(`${API_URL}${path}`, { ...init, headers })
+
+  if (response.status === 401) {
+    void notifyUnauthorized()
+  }
+
+  return response
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers)
   const bodyIsFormData = init.body instanceof FormData
   if (!bodyIsFormData && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
 
-  let session = readSession()
-  if (authenticated && session?.accessToken) {
-    headers.set('Authorization', `Bearer ${session.accessToken}`)
-  }
-
-  let response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers,
-  })
-
-  if (response.status === 401 && authenticated && session) {
-    const refreshed = await refreshSession(session)
-    if (!refreshed) {
-      throw await parseError(response)
-    }
-
-    session = refreshed
-    const retryHeaders = new Headers(init.headers)
-    if (!bodyIsFormData && !retryHeaders.has('Content-Type')) {
-      retryHeaders.set('Content-Type', 'application/json')
-    }
-    retryHeaders.set('Authorization', `Bearer ${refreshed.accessToken}`)
-
-    response = await fetch(`${API_URL}${path}`, {
-      ...init,
-      headers: retryHeaders,
-    })
-  }
+  const response = await authorizedFetch(path, { ...init, headers })
 
   if (!response.ok) {
     throw await parseError(response)
@@ -162,32 +148,8 @@ async function request<T>(
   return undefined as T
 }
 
-export const authApi = {
-  register: (payload: { email: string; password: string; fullName: string }) =>
-    request<AuthSession>(
-      '/api/auth/register',
-      {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      },
-      { authenticated: false },
-    ),
-
-  login: (payload: { email: string; password: string }) =>
-    request<AuthSession>(
-      '/api/auth/login',
-      {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      },
-      { authenticated: false },
-    ),
-
-  logout: (refreshToken: string) =>
-    request<void>('/api/auth/logout', {
-      method: 'POST',
-      body: JSON.stringify({ refreshToken }),
-    }),
+export const meApi = {
+  get: () => request<MeResponse>('/api/me'),
 }
 
 export const clientsApi = {
@@ -266,18 +228,8 @@ export const uploadsApi = {
     ),
 
   async downloadArtifact(artifactId: string, fileName: string) {
-    const session = readSession()
-    if (!session) {
-      throw new Error('No hay sesión activa.')
-    }
-
-    const response = await fetch(
-      `${API_URL}/api/artifacts/${artifactId}/download`,
-      {
-        headers: {
-          Authorization: `Bearer ${session.accessToken}`,
-        },
-      },
+    const response = await authorizedFetch(
+      `/api/artifacts/${artifactId}/download`,
     )
 
     if (!response.ok) {

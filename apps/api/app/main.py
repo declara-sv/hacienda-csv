@@ -11,15 +11,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.middleware.cors import CORSMiddleware
 
-from app.api import artifacts, auth, catalogs, clients, configs, documents, periods, runs, uploads, usage
+from app.api import artifacts, catalogs, clients, configs, documents, me, periods, runs, uploads, usage
 from app.api.errors import install_error_handlers
-from app.config import Settings, get_settings
+from app.config import VERCEL_ORIGIN_PATTERN, Settings, get_settings
+from app.security import ClerkTokenVerifier
 from app.storage import FileStorage, build_storage
 from app.worker import BackgroundWorker
 
 logger = logging.getLogger(__name__)
-
-_VERCEL_ORIGIN = r"https://[A-Za-z0-9.-]+\.vercel\.app"
 
 
 class _CaseInsensitiveCors(CORSMiddleware):
@@ -40,6 +39,7 @@ def create_app(
     *,
     session_factory: sessionmaker[Session] | None = None,
     storage: FileStorage | None = None,
+    token_verifier: ClerkTokenVerifier | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     if session_factory is None:
@@ -71,11 +71,12 @@ def create_app(
     app.state.settings = settings
     app.state.session_factory = session_factory
     app.state.storage = storage
+    app.state.token_verifier = token_verifier or ClerkTokenVerifier(settings)
 
     app.add_middleware(
         _CaseInsensitiveCors,
         allow_origins=list(settings.cors_allowed_origins),
-        allow_origin_regex=_VERCEL_ORIGIN if settings.cors_allow_vercel_subdomains else None,
+        allow_origin_regex=VERCEL_ORIGIN_PATTERN if settings.cors_allow_vercel_subdomains else None,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -90,7 +91,7 @@ def create_app(
     def health() -> dict:
         return {"status": "ok"}
 
-    for module in (auth, clients, configs, periods, uploads, documents, runs, artifacts, catalogs, usage):
+    for module in (me, clients, configs, periods, uploads, documents, runs, artifacts, catalogs, usage):
         app.include_router(module.router)
     return app
 

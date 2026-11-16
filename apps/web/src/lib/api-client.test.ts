@@ -1,19 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { getToken } from '@clerk/tanstack-react-start'
 import {
   ApiError,
   catalogsApi,
   clientsApi,
   documentsApi,
+  meApi,
   runsApi,
+  setUnauthorizedHandler,
   uploadsApi,
 } from './api-client'
 import { documentDto, rentaCatalog } from '#/test/fixtures'
-
-vi.mock('#/auth/auth-storage', () => ({
-  readSession: vi.fn(() => ({ accessToken: 'test-token' })),
-  writeSession: vi.fn(),
-  clearSession: vi.fn(),
-}))
 
 const upload = {
   id: 'u1',
@@ -63,6 +60,120 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.clearAllMocks()
   fetchMock.mockReset()
+})
+
+describe('Clerk session token', () => {
+  it('sends the current Clerk token as a Bearer header on every request', async () => {
+    vi.mocked(getToken)
+      .mockResolvedValueOnce('token-1')
+      .mockResolvedValueOnce('token-2')
+    fetchMock
+      .mockResolvedValueOnce(json([]))
+      .mockResolvedValueOnce(json(rentaCatalog))
+
+    await clientsApi.list()
+    await catalogsApi.renta()
+
+    const authHeader = (call: number) =>
+      new Headers(fetchMock.mock.calls[call][1]?.headers).get('Authorization')
+    expect(authHeader(0)).toBe('Bearer token-1')
+    expect(authHeader(1)).toBe('Bearer token-2')
+    expect(getToken).toHaveBeenCalledTimes(2)
+  })
+
+  it('sends no Authorization header when there is no Clerk session', async () => {
+    vi.mocked(getToken).mockResolvedValueOnce(null)
+    fetchMock.mockResolvedValueOnce(json([]))
+
+    await clientsApi.list()
+
+    expect(
+      new Headers(fetchMock.mock.calls[0][1]?.headers).has('Authorization'),
+    ).toBe(false)
+  })
+
+  it('reads the signed-in user and account from /api/me', async () => {
+    const me = {
+      user: { id: 'u1', email: 'ana@example.com', fullName: 'Ana' },
+      account: { id: 'a1', name: 'Despacho Ana', role: 'owner' },
+    }
+    fetchMock.mockResolvedValueOnce(json(me))
+
+    await expect(meApi.get()).resolves.toEqual(me)
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/api\/me$/)
+  })
+
+  it('authorizes artifact downloads with the Clerk token', async () => {
+    vi.stubGlobal('window', {
+      URL: { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() },
+      document: {
+        createElement: () => ({ click: vi.fn(), remove: vi.fn() }),
+        body: { appendChild: vi.fn() },
+      },
+    })
+    fetchMock.mockResolvedValueOnce(new Response('csv'))
+
+    await uploadsApi.downloadArtifact('a1', 'anexo.csv')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toMatch(/\/api\/artifacts\/a1\/download$/)
+    expect(new Headers(init?.headers).get('Authorization')).toBe(
+      'Bearer test-token',
+    )
+  })
+})
+
+describe('401 from the API', () => {
+  it('sends the user to sign-in and still rejects with the ApiError', async () => {
+    const onUnauthorized = vi.fn()
+    const restore = setUnauthorizedHandler(onUnauthorized)
+    fetchMock.mockResolvedValueOnce(json({ title: 'Token inválido.' }, 401))
+
+    await expect(clientsApi.list()).rejects.toMatchObject({
+      status: 401,
+      message: 'Token inválido.',
+    })
+    await vi.waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1))
+    restore()
+  })
+
+  it('redirects once when several requests fail together', async () => {
+    let finish: () => void = () => {}
+    const onUnauthorized = vi.fn(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    )
+    const restore = setUnauthorizedHandler(onUnauthorized)
+    fetchMock.mockImplementation(async () => json({ title: 'No' }, 401))
+
+    await Promise.allSettled([
+      clientsApi.list(),
+      catalogsApi.renta(),
+      runsApi.list('c1', 'p1'),
+    ])
+    await vi.waitFor(() => expect(onUnauthorized).toHaveBeenCalledTimes(1))
+    finish()
+    restore()
+  })
+
+  it('falls back to a full page load of /login without a registered handler', async () => {
+    const assign = vi.fn()
+    vi.stubGlobal('window', { location: { assign } })
+    fetchMock.mockResolvedValueOnce(json({ title: 'No' }, 401))
+
+    await expect(clientsApi.list()).rejects.toBeInstanceOf(ApiError)
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith('/login'))
+  })
+
+  it('does not redirect on other errors', async () => {
+    const onUnauthorized = vi.fn()
+    const restore = setUnauthorizedHandler(onUnauthorized)
+    fetchMock.mockResolvedValueOnce(json({ title: 'Prohibido' }, 403))
+
+    await expect(clientsApi.list()).rejects.toMatchObject({ status: 403 })
+    await Promise.resolve()
+    expect(onUnauthorized).not.toHaveBeenCalled()
+    restore()
+  })
 })
 
 describe('document API', () => {

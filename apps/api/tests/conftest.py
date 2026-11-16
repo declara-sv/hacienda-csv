@@ -35,9 +35,13 @@ from alembic import command  # noqa: E402
 from app.config import Settings  # noqa: E402
 from app.db import Base  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.security import ClerkTokenVerifier  # noqa: E402
 from app.storage import LocalFileStorage  # noqa: E402
 from tests import fakes  # noqa: E402
+from tests.clerk import ISSUER, FakeJwksClient, TokenMinter, generate_key, public_jwk  # noqa: E402
 from tests.helpers import ApiUser  # noqa: E402
+
+TEST_KID = "test-key-1"
 
 API_ROOT = Path(__file__).resolve().parents[1]
 
@@ -99,8 +103,30 @@ def settings(storage_root: Path) -> Settings:
         worker_enabled=False,
         anthropic_api_key="",
         ai_extraction_enabled=False,
+        clerk_issuer=ISSUER,
         _env_file=None,
     )
+
+
+@pytest.fixture(scope="session")
+def rsa_key():
+    return generate_key()
+
+
+@pytest.fixture
+def jwks_client(rsa_key) -> FakeJwksClient:
+    return FakeJwksClient([public_jwk(rsa_key, TEST_KID)])
+
+
+@pytest.fixture
+def token_verifier(settings: Settings, jwks_client: FakeJwksClient) -> ClerkTokenVerifier:
+    return ClerkTokenVerifier(settings, jwks_client=jwks_client)
+
+
+@pytest.fixture
+def tokens(rsa_key) -> TokenMinter:
+    """Mints Clerk-like session tokens signed with the key served by `jwks_client`."""
+    return TokenMinter(rsa_key, TEST_KID)
 
 
 @pytest.fixture
@@ -109,8 +135,15 @@ def storage(storage_root: Path) -> LocalFileStorage:
 
 
 @pytest.fixture
-def app(settings: Settings, session_factory: sessionmaker[Session], storage: LocalFileStorage):
-    return create_app(settings, session_factory=session_factory, storage=storage)
+def app(
+    settings: Settings,
+    session_factory: sessionmaker[Session],
+    storage: LocalFileStorage,
+    token_verifier: ClerkTokenVerifier,
+):
+    return create_app(
+        settings, session_factory=session_factory, storage=storage, token_verifier=token_verifier
+    )
 
 
 @pytest.fixture
@@ -120,13 +153,13 @@ def client(app) -> Iterator[TestClient]:
 
 
 @pytest.fixture
-def user(client: TestClient) -> ApiUser:
-    return ApiUser.register(client)
+def user(client: TestClient, tokens: TokenMinter) -> ApiUser:
+    return ApiUser.create(client, tokens)
 
 
 @pytest.fixture
-def other_user(client: TestClient) -> ApiUser:
-    return ApiUser.register(client)
+def other_user(client: TestClient, tokens: TokenMinter) -> ApiUser:
+    return ApiUser.create(client, tokens)
 
 
 @pytest.fixture

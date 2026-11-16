@@ -15,6 +15,8 @@
 @import '@fontsource/source-sans-3/400.css';
 @import '@fontsource/source-sans-3/600.css';
 @import '@fontsource/source-sans-3/700.css';
+/* Clerk's component styles sit below Tailwind utilities (see clerk-appearance.ts). */
+@layer theme, base, clerk, components, utilities;
 @import 'tailwindcss';
 
 :root {
@@ -67,6 +69,25 @@
 
     --shadow-rgb: 0 0 0;
   }
+}
+
+/*
+  Tokens handed to Clerk's appearance variables (clerk-appearance.ts). Clerk
+  declares its own --accent, --danger, ... custom properties inside its
+  components, so passing var(--accent) directly would reference itself and
+  resolve to nothing. These aliases resolve on :root, in light and dark mode.
+*/
+:root {
+  --auth-accent: var(--accent);
+  --auth-accent-ink: var(--accent-ink);
+  --auth-surface-raised: var(--surface-raised);
+  --auth-surface-sunken: var(--surface-sunken);
+  --auth-ink: var(--ink);
+  --auth-ink-muted: var(--ink-muted);
+  --auth-line-strong: var(--line-strong);
+  --auth-danger: var(--danger);
+  --auth-success: var(--success);
+  --auth-warning: var(--warning);
 }
 
 @theme inline {

@@ -107,6 +107,7 @@ Se mantiene el contrato que usa la web (rutas, JSON camelCase, errores tipo Prob
 - Runs: crear devuelve 409 si hay extracciones en curso y 400 si no hay documentos incluidos o alguno
   incluido tiene Error. `GenerationRunDto` agrega `issues`. `OutputArtifactDto` agrega `rowCount`.
 - Catálogo: `GET /api/catalogs/renta`.
+- Auth: se quitan `/api/auth/register|login|refresh|logout`; se agrega `GET /api/me` (ver abajo).
 
 `DocumentDto`: `id, uploadId, originalFileName, extractionMethod, status, issues[{code,severity,message,field}],
 edited, excluded, tipoDte, codigoGeneracion, numeroControl, selloRecepcion, fechaEmision (YYYY-MM-DD),
@@ -123,12 +124,13 @@ Pensado para que hoy lo use una sola persona y mañana varias personas de una mi
 para registrar el uso desde ya y decidir precios con datos reales (no hay cobro).
 
 - **Cuentas**: `accounts` (firma) y `account_members` (`Owner` | `Member`, único por cuenta y usuario).
-  Los clientes pertenecen a la cuenta (`clients.account_id`), no al usuario. Registrarse crea, en una sola
-  transacción, el usuario, una cuenta con su nombre completo y la membresía `Owner`.
+  Los clientes pertenecen a la cuenta (`clients.account_id`), no al usuario. La primera petición de un
+  usuario de Clerk crea, en una sola transacción, el usuario, una cuenta con su nombre y la membresía
+  `Owner`.
 - **Cuenta actual**: dependencia `CurrentAccount` → `(user_id, account_id)`. Sin encabezado se usa la
   membresía más antigua (hoy hay una sola). Con `X-Account-Id` debe ser una cuenta del usuario
   (403 si no; 400 si el identificador es inválido). Los recursos de otra cuenta siguen respondiendo 404.
-  La respuesta de auth agrega `user.account: {id, name, role}`. No hay invitaciones todavía.
+  `GET /api/me` devuelve la cuenta actual con el rol del usuario. No hay invitaciones todavía.
 - **Registro de uso** (`usage_events`): tabla solo de inserción, **sin llaves foráneas** para que las filas
   sobrevivan al borrar uploads, clientes o cuentas; guarda `client_name` como foto del nombre. Se escribe
   en la misma transacción del cambio de negocio, dentro de un SAVEPOINT: si el insert del evento falla se
@@ -158,6 +160,25 @@ para registrar el uso desde ya y decidir precios con datos reales (no hay cobro)
   totales por cliente y de la cuenta: `uploads`, `bytesStored`, `documentsExtracted {parser, ai, manual,
   total}`, `extractionsFailed`, `aiCalls`, tokens, `aiCostUsd` (texto con 6 decimales),
   `aiCallsUnpriced`, `runs`, `rowsGenerated`, `downloads`.
+
+## Autenticación (Clerk)
+
+- Clerk maneja solo la identidad; `accounts` / `account_members` siguen siendo la fuente de verdad de
+  tenencia y uso. `users.clerk_user_id` (único) enlaza con el `sub` del token; no hay contraseñas ni
+  refresh tokens en el API.
+- La web envía `Authorization: Bearer <session token>` (Clerk `getToken()`, que Clerk renueva solo).
+  El API verifica con el JWKS de `CLERK_ISSUER` (`PyJWKClient` con caché, por proceso): solo RS256,
+  firma, `exp`/`nbf` con 30 s de tolerancia, `iss` igual a `CLERK_ISSUER`, `sub` presente y, si viene,
+  `azp` dentro de `CLERK_AUTHORIZED_PARTIES` (o `https://*.vercel.app` con
+  `CORS_ALLOW_VERCEL_SUBDOMAINS=true`). Cualquier fallo → 401 `{title: "No autorizado.", status: 401}`.
+- Claims personalizados del token: `{"email": "{{user.primary_email_address}}", "name":
+  "{{user.full_name}}"}`. Son opcionales: sin `name` el nombre es el correo o `"Usuario"`; sin `email`,
+  `users.email` queda nulo. Cuando cambian se actualiza el usuario; un claim ausente no borra lo guardado.
+  El nombre de la cuenta no cambia después de creada.
+- Aprovisionamiento just-in-time en la dependencia `CurrentUser`: `sub` desconocido → usuario + cuenta +
+  `Owner`. Dos primeras peticiones simultáneas: la perdedora choca con el índice único, hace rollback y
+  vuelve a leer el usuario ganador.
+- `GET /api/me` → `{user: {id, email, fullName}, account: {id, name, role}}` (respeta `X-Account-Id`).
 
 ## Riesgos abiertos
 

@@ -65,14 +65,14 @@ def upgrade() -> None:
     op.create_table(
         "users",
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("email", sa.String(length=320), nullable=False),
-        sa.Column("normalized_email", sa.String(length=320), nullable=False),
+        sa.Column("clerk_user_id", sa.String(length=100), nullable=False),
+        sa.Column("email", sa.String(length=320), nullable=True),
         sa.Column("full_name", sa.String(length=200), nullable=False),
-        sa.Column("password_hash", sa.String(length=2048), nullable=False),
         sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("normalized_email"),
+        sa.UniqueConstraint("clerk_user_id"),
     )
+    op.create_index(op.f("ix_users_email"), "users", ["email"], unique=False)
     op.create_table(
         "accounts",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -109,19 +109,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_clients_account_name", "clients", ["account_id", "name"], unique=False)
-    op.create_table(
-        "refresh_tokens",
-        sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("user_id", sa.Uuid(), nullable=False),
-        sa.Column("token_hash", sa.String(length=200), nullable=False),
-        sa.Column("created_at_utc", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("expires_at_utc", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("revoked_at_utc", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("token_hash"),
-    )
-    op.create_index(op.f("ix_refresh_tokens_user_id"), "refresh_tokens", ["user_id"], unique=False)
     op.create_table(
         "client_configs",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -362,12 +349,11 @@ def downgrade() -> None:
     op.drop_table("filing_periods")
     op.drop_index(op.f("ix_client_configs_client_id"), table_name="client_configs")
     op.drop_table("client_configs")
-    op.drop_index(op.f("ix_refresh_tokens_user_id"), table_name="refresh_tokens")
-    op.drop_table("refresh_tokens")
     op.drop_index("ix_clients_account_name", table_name="clients")
     op.drop_table("clients")
     op.drop_index(op.f("ix_account_members_user_id"), table_name="account_members")
     op.drop_table("account_members")
     op.drop_table("accounts")
+    op.drop_index(op.f("ix_users_email"), table_name="users")
     op.drop_table("users")
     # ### end Alembic commands ###

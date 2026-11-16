@@ -14,6 +14,8 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ClientesRouteImport } from './routes/clientes'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ClientesIndexRouteImport } from './routes/clientes.index'
+import { Route as RegistroSplatRouteImport } from './routes/registro.$'
+import { Route as LoginSplatRouteImport } from './routes/login.$'
 import { Route as ClientesClientIdRouteImport } from './routes/clientes.$clientId'
 import { Route as ClientesClientIdIndexRouteImport } from './routes/clientes.$clientId.index'
 import { Route as ClientesClientIdPeriodosPeriodIdCargasRouteImport } from './routes/clientes.$clientId.periodos.$periodId.cargas'
@@ -43,6 +45,16 @@ const ClientesIndexRoute = ClientesIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ClientesRoute,
 } as any)
+const RegistroSplatRoute = RegistroSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => RegistroRoute,
+} as any)
+const LoginSplatRoute = LoginSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => LoginRoute,
+} as any)
 const ClientesClientIdRoute = ClientesClientIdRouteImport.update({
   id: '/$clientId',
   path: '/$clientId',
@@ -63,17 +75,21 @@ const ClientesClientIdPeriodosPeriodIdCargasRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/clientes': typeof ClientesRouteWithChildren
-  '/login': typeof LoginRoute
-  '/registro': typeof RegistroRoute
+  '/login': typeof LoginRouteWithChildren
+  '/registro': typeof RegistroRouteWithChildren
   '/clientes/$clientId': typeof ClientesClientIdRouteWithChildren
+  '/login/$': typeof LoginSplatRoute
+  '/registro/$': typeof RegistroSplatRoute
   '/clientes/': typeof ClientesIndexRoute
   '/clientes/$clientId/': typeof ClientesClientIdIndexRoute
   '/clientes/$clientId/periodos/$periodId/cargas': typeof ClientesClientIdPeriodosPeriodIdCargasRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/login': typeof LoginRoute
-  '/registro': typeof RegistroRoute
+  '/login': typeof LoginRouteWithChildren
+  '/registro': typeof RegistroRouteWithChildren
+  '/login/$': typeof LoginSplatRoute
+  '/registro/$': typeof RegistroSplatRoute
   '/clientes': typeof ClientesIndexRoute
   '/clientes/$clientId': typeof ClientesClientIdIndexRoute
   '/clientes/$clientId/periodos/$periodId/cargas': typeof ClientesClientIdPeriodosPeriodIdCargasRoute
@@ -82,9 +98,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/clientes': typeof ClientesRouteWithChildren
-  '/login': typeof LoginRoute
-  '/registro': typeof RegistroRoute
+  '/login': typeof LoginRouteWithChildren
+  '/registro': typeof RegistroRouteWithChildren
   '/clientes/$clientId': typeof ClientesClientIdRouteWithChildren
+  '/login/$': typeof LoginSplatRoute
+  '/registro/$': typeof RegistroSplatRoute
   '/clientes/': typeof ClientesIndexRoute
   '/clientes/$clientId/': typeof ClientesClientIdIndexRoute
   '/clientes/$clientId/periodos/$periodId/cargas': typeof ClientesClientIdPeriodosPeriodIdCargasRoute
@@ -97,6 +115,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/registro'
     | '/clientes/$clientId'
+    | '/login/$'
+    | '/registro/$'
     | '/clientes/'
     | '/clientes/$clientId/'
     | '/clientes/$clientId/periodos/$periodId/cargas'
@@ -105,6 +125,8 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/registro'
+    | '/login/$'
+    | '/registro/$'
     | '/clientes'
     | '/clientes/$clientId'
     | '/clientes/$clientId/periodos/$periodId/cargas'
@@ -115,6 +137,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/registro'
     | '/clientes/$clientId'
+    | '/login/$'
+    | '/registro/$'
     | '/clientes/'
     | '/clientes/$clientId/'
     | '/clientes/$clientId/periodos/$periodId/cargas'
@@ -123,8 +147,8 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ClientesRoute: typeof ClientesRouteWithChildren
-  LoginRoute: typeof LoginRoute
-  RegistroRoute: typeof RegistroRoute
+  LoginRoute: typeof LoginRouteWithChildren
+  RegistroRoute: typeof RegistroRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -163,6 +187,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/clientes/'
       preLoaderRoute: typeof ClientesIndexRouteImport
       parentRoute: typeof ClientesRoute
+    }
+    '/registro/$': {
+      id: '/registro/$'
+      path: '/$'
+      fullPath: '/registro/$'
+      preLoaderRoute: typeof RegistroSplatRouteImport
+      parentRoute: typeof RegistroRoute
+    }
+    '/login/$': {
+      id: '/login/$'
+      path: '/$'
+      fullPath: '/login/$'
+      preLoaderRoute: typeof LoginSplatRouteImport
+      parentRoute: typeof LoginRoute
     }
     '/clientes/$clientId': {
       id: '/clientes/$clientId'
@@ -216,21 +254,44 @@ const ClientesRouteWithChildren = ClientesRoute._addFileChildren(
   ClientesRouteChildren,
 )
 
+interface LoginRouteChildren {
+  LoginSplatRoute: typeof LoginSplatRoute
+}
+
+const LoginRouteChildren: LoginRouteChildren = {
+  LoginSplatRoute: LoginSplatRoute,
+}
+
+const LoginRouteWithChildren = LoginRoute._addFileChildren(LoginRouteChildren)
+
+interface RegistroRouteChildren {
+  RegistroSplatRoute: typeof RegistroSplatRoute
+}
+
+const RegistroRouteChildren: RegistroRouteChildren = {
+  RegistroSplatRoute: RegistroSplatRoute,
+}
+
+const RegistroRouteWithChildren = RegistroRoute._addFileChildren(
+  RegistroRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ClientesRoute: ClientesRouteWithChildren,
-  LoginRoute: LoginRoute,
-  RegistroRoute: RegistroRoute,
+  LoginRoute: LoginRouteWithChildren,
+  RegistroRoute: RegistroRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }

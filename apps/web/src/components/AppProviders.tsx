@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AuthProvider } from '#/auth/AuthContext'
+import { ClerkSessionBridge } from '#/auth/ClerkSessionBridge'
 import { I18nProvider } from '#/i18n/I18nProvider'
 
 const queryClient = new QueryClient({
@@ -14,9 +14,8 @@ const queryClient = new QueryClient({
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <I18nProvider>
-        <AuthProvider>{children}</AuthProvider>
-      </I18nProvider>
+      <ClerkSessionBridge />
+      <I18nProvider>{children}</I18nProvider>
     </QueryClientProvider>
   )
 }

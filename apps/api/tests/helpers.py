@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import Settings
 from app.storage import FileStorage
 from app.worker import process_extraction, process_run, try_claim_extraction, try_claim_run
+from tests.clerk import TokenMinter, new_sub
 
-PASSWORD = "Password123!"
 CLIENT_NIT = "0614-010101-101-1"
 CLIENT_NRC = "123456-7"
 
@@ -56,19 +56,33 @@ def fake_pdf(
 
 
 class ApiUser:
-    def __init__(self, client: TestClient, auth: dict[str, Any]) -> None:
+    """A Clerk-authenticated caller. `me` is the `/api/me` body from when the user was provisioned."""
+
+    def __init__(self, client: TestClient, sub: str, token: str, me: dict[str, Any]) -> None:
         self.http = client
-        self.auth = auth
-        self.headers = {"Authorization": f"Bearer {auth['accessToken']}"}
+        self.sub = sub
+        self.token = token
+        self.me = me
+        self.headers = {"Authorization": f"Bearer {token}"}
 
     @classmethod
-    def register(cls, client: TestClient, email: str | None = None) -> ApiUser:
-        email = email or f"user-{uuid.uuid4().hex}@test.local"
-        response = client.post(
-            "/api/auth/register", json={"email": email, "password": PASSWORD, "fullName": "Test User"}
-        )
-        assert response.status_code == 201, response.text
-        return cls(client, response.json())
+    def create(
+        cls, client: TestClient, tokens: TokenMinter, sub: str | None = None, **claims: Any
+    ) -> ApiUser:
+        """Mint a token for a new (or given) Clerk user and provision it through `GET /api/me`."""
+        sub = sub or new_sub()
+        token = tokens.mint(sub, **claims)
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 200, response.text
+        return cls(client, sub, token, response.json())
+
+    @property
+    def id(self) -> str:
+        return self.me["user"]["id"]
+
+    @property
+    def account_id(self) -> str:
+        return self.me["account"]["id"]
 
     # --- raw verbs ---
     def get(self, url: str, **kw: Any) -> Response:

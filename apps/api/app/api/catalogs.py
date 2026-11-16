@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.security import CurrentUserId
+from app.api.deps import CurrentUserId
 from app.services import integrations
 
 router = APIRouter(prefix="/api/catalogs", tags=["catalogs"])

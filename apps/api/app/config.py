@@ -1,7 +1,12 @@
 from functools import lru_cache
+from typing import Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEV_CLERK_ISSUER = "https://exciting-gopher-5507.clerk.accounts.dev"
+# Vercel preview/production deployments; used for CORS and for Clerk's `azp` claim.
+VERCEL_ORIGIN_PATTERN = r"https://[A-Za-z0-9.-]+\.vercel\.app"
 
 
 class Settings(BaseSettings):
@@ -12,11 +17,15 @@ class Settings(BaseSettings):
     environment: str = "Development"
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/accounting_dev"
 
-    jwt_issuer: str = "Accounting.Api"
-    jwt_audience: str = "Accounting.Web"
-    jwt_signing_key: str = "CAMBIAR_ESTA_LLAVE_EN_PRODUCCION_32+"
-    jwt_access_token_minutes: int = 20
-    jwt_refresh_token_days: int = 30
+    # Clerk session tokens (identity only; tenancy lives in `accounts`). The JWKS URL defaults to
+    # `{clerk_issuer}/.well-known/jwks.json`.
+    clerk_issuer: str = DEV_CLERK_ISSUER
+    clerk_jwks_url: str = ""
+    # Accepted `azp` (origin of the frontend that requested the token). `https://*.vercel.app` is
+    # also accepted when `cors_allow_vercel_subdomains` is on.
+    clerk_authorized_parties: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000", "http://localhost:5173"]
+    )
 
     storage_provider: str = "Local"  # Local | AzureBlob
     storage_upload_container: str = "uploads"
@@ -40,6 +49,13 @@ class Settings(BaseSettings):
     ai_extraction_enabled: bool = True
 
     max_upload_bytes: int = 20_000_000
+
+    @model_validator(mode="after")
+    def _derive_clerk_jwks_url(self) -> Self:
+        self.clerk_issuer = self.clerk_issuer.strip().rstrip("/")
+        if not self.clerk_jwks_url.strip():
+            self.clerk_jwks_url = f"{self.clerk_issuer}/.well-known/jwks.json"
+        return self
 
     @property
     def is_development(self) -> bool:

@@ -48,14 +48,6 @@ def _tax_number(value: str | None) -> str | None:
     return value
 
 
-def _email(value: str) -> str:
-    # Same rule as .NET's [EmailAddress]: a single "@" that is neither first nor last.
-    at = value.find("@")
-    if at <= 0 or at == len(value) - 1 or at != value.rfind("@") or any(c.isspace() for c in value):
-        raise ValueError("El correo electrónico no es válido.")
-    return value
-
-
 def required_str(max_length: int, min_length: int = 1):
     return Annotated[str, BeforeValidator(_strip), Field(min_length=min_length, max_length=max_length)]
 
@@ -71,50 +63,30 @@ TaxNumber = Annotated[
     Field(default=None),
 ]
 RentaCode = optional_str(2)
-Email = Annotated[str, BeforeValidator(_strip), Field(min_length=1, max_length=320), AfterValidator(_email)]
 
 
 class ApiModel(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, from_attributes=True)
 
 
-# --- Auth ---------------------------------------------------------------------------------------
+# --- Current user ---------------------------------------------------------------------------
 
 
-class RegisterRequest(ApiModel):
-    email: Email
-    password: Annotated[str, Field(min_length=8, max_length=128)]
-    full_name: required_str(200)
+class MeUserDto(ApiModel):
+    id: uuid.UUID
+    email: str | None
+    full_name: str
 
 
-class LoginRequest(ApiModel):
-    email: Email
-    password: Annotated[str, Field(min_length=8, max_length=128)]
-
-
-class RefreshRequest(ApiModel):
-    refresh_token: Annotated[str, Field(min_length=30, max_length=400)]
-
-
-class AuthAccountDto(ApiModel):
+class MeAccountDto(ApiModel):
     id: uuid.UUID
     name: str
     role: str
 
 
-class AuthUserDto(ApiModel):
-    id: uuid.UUID
-    email: str
-    full_name: str
-    # The user's default account (additive; older clients ignore it).
-    account: AuthAccountDto | None = None
-
-
-class AuthResponseDto(ApiModel):
-    access_token: str
-    access_token_expires_at_utc: UtcDateTime
-    refresh_token: str
-    user: AuthUserDto
+class MeDto(ApiModel):
+    user: MeUserDto
+    account: MeAccountDto
 
 
 # --- Clients ------------------------------------------------------------------------------------
