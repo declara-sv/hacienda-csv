@@ -1,0 +1,171 @@
+{
+  "spec_id": "f07_anexo1_v2025",
+  "version": "2025",
+  "anexo": 1,
+  "description": "Anexo 1 F-07: detalle de ventas a contribuyentes (DTE 03/05/06). Manual 700-DGII-MN-2021-026; columnas R/S de Renta obligatorias desde 01/2025, '0' antes. Diseño DTE vigente desde 11/2022.",
+  "valid_from": "2022-11",
+  "valid_to": null,
+  "column_count": 20,
+  "file": {
+    "delimiter": ";",
+    "line_ending": "\r\n",
+    "encoding": "windows-1252",
+    "header": false,
+    "file_name_pattern": "anexo1_{yyyymm}.csv",
+    "max_file_name_length": 25
+  },
+  "columns": [
+    {
+      "letter": "A",
+      "name": "Fecha de emisión del documento",
+      "kind": "field",
+      "source": "fecha_emision",
+      "format": "date"
+    },
+    {
+      "letter": "B",
+      "name": "Clase de documento",
+      "kind": "constant",
+      "value": "4",
+      "format": "text",
+      "width": 1
+    },
+    {
+      "letter": "C",
+      "name": "Tipo de documento",
+      "kind": "field",
+      "source": "tipo_dte",
+      "format": "text",
+      "width": 2
+    },
+    {
+      "letter": "D",
+      "name": "Número de resolución (DTE: número de control)",
+      "kind": "field",
+      "source": "numero_control",
+      "format": "text",
+      "strip_dashes": false
+    },
+    {
+      "letter": "E",
+      "name": "Serie del documento (DTE: sello de recepción)",
+      "kind": "field",
+      "source": "sello_recepcion",
+      "format": "text",
+      "strip_dashes": false
+    },
+    {
+      "letter": "F",
+      "name": "Número de documento (DTE: código de generación)",
+      "kind": "field",
+      "source": "codigo_generacion",
+      "format": "text",
+      "strip_dashes": false
+    },
+    {
+      "letter": "G",
+      "name": "Número de control interno",
+      "kind": "constant",
+      "value": "",
+      "format": "text"
+    },
+    {
+      "letter": "H",
+      "name": "NIT o NRC del cliente",
+      "kind": "field",
+      "source": "receptor_nit_nrc",
+      "format": "text"
+    },
+    {
+      "letter": "I",
+      "name": "Nombre, razón social o denominación del cliente",
+      "kind": "field",
+      "source": "receptor_nombre",
+      "format": "text"
+    },
+    {
+      "letter": "J",
+      "name": "Ventas exentas",
+      "kind": "field",
+      "source": "total_exentas",
+      "format": "money"
+    },
+    {
+      "letter": "K",
+      "name": "Ventas no sujetas",
+      "kind": "field",
+      "source": "total_no_sujetas",
+      "format": "money"
+    },
+    {
+      "letter": "L",
+      "name": "Ventas gravadas locales",
+      "kind": "field",
+      "source": "total_gravadas",
+      "format": "money"
+    },
+    {
+      "letter": "M",
+      "name": "Débito fiscal",
+      "kind": "field",
+      "source": "iva",
+      "format": "money"
+    },
+    {
+      "letter": "N",
+      "name": "Ventas a cuenta de terceros no domiciliados",
+      "kind": "constant",
+      "value": "0.00",
+      "format": "money"
+    },
+    {
+      "letter": "O",
+      "name": "Débito fiscal por ventas a cuenta de terceros",
+      "kind": "constant",
+      "value": "0.00",
+      "format": "money"
+    },
+    {
+      "letter": "P",
+      "name": "Total de ventas",
+      "kind": "sum",
+      "format": "money",
+      "sum_of": [
+        "J",
+        "K",
+        "L",
+        "M",
+        "N",
+        "O"
+      ]
+    },
+    {
+      "letter": "Q",
+      "name": "Número de DUI del cliente",
+      "kind": "field",
+      "source": "receptor_dui",
+      "format": "text"
+    },
+    {
+      "letter": "R",
+      "name": "Tipo de operación (Renta)",
+      "kind": "field",
+      "source": "tipo_operacion_renta",
+      "format": "text"
+    },
+    {
+      "letter": "S",
+      "name": "Tipo de ingreso (Renta)",
+      "kind": "field",
+      "source": "tipo_ingreso_renta",
+      "format": "text"
+    },
+    {
+      "letter": "T",
+      "name": "Número del anexo",
+      "kind": "constant",
+      "value": "1",
+      "format": "text"
+    }
+  ]
+}

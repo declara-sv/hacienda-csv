@@ -118,42 +118,56 @@ export function GenerationHistory({
             {run.errorMessage ? (
               <Notice variant="error">{run.errorMessage}</Notice>
             ) : null}
+            {run.issues.length > 0 ? (
+              <Notice variant="warning">
+                <p className="font-semibold">
+                  {t('generationIssues', { count: run.issues.length })}
+                </p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                  {run.issues.map((issue, index) => (
+                    <li key={`${issue.code}-${index}`}>{issue.message}</li>
+                  ))}
+                </ul>
+              </Notice>
+            ) : null}
             {run.status === 'Completed' && failedFiles > 0 ? (
               <Notice variant="error">
                 {t('generationPartialFailure', { count: failedFiles })}
               </Notice>
             ) : null}
-            <details className="border-t border-line pt-3">
-              <summary className="cursor-pointer text-sm font-semibold text-ink">
-                {t('generationFiles', { count: run.files.length })}
-              </summary>
-              <ul className="mt-3 divide-y divide-line">
-                {run.files.map((file, index) => (
-                  <li key={`${run.id}-${index}`} className="py-2 text-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="min-w-0 break-all text-ink">
-                        {file.originalFileName}
-                      </span>
-                      <span
-                        className={cn(
-                          'text-xs font-semibold',
-                          file.status === 'Failed'
-                            ? 'text-danger'
-                            : 'text-ink-muted',
-                        )}
-                      >
-                        {t(fileStatusLabels[file.status])}
-                      </span>
-                    </div>
-                    {file.errorMessage ? (
-                      <p className="mt-1 break-words text-danger">
-                        {file.errorMessage}
-                      </p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </details>
+            {run.files.length > 0 ? (
+              <details className="border-t border-line pt-3">
+                <summary className="cursor-pointer text-sm font-semibold text-ink">
+                  {t('generationFiles', { count: run.files.length })}
+                </summary>
+                <ul className="mt-3 divide-y divide-line">
+                  {run.files.map((file, index) => (
+                    <li key={`${run.id}-${index}`} className="py-2 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="min-w-0 break-all text-ink">
+                          {file.originalFileName}
+                        </span>
+                        <span
+                          className={cn(
+                            'text-xs font-semibold',
+                            file.status === 'Failed'
+                              ? 'text-danger'
+                              : 'text-ink-muted',
+                          )}
+                        >
+                          {t(fileStatusLabels[file.status])}
+                        </span>
+                      </div>
+                      {file.errorMessage ? (
+                        <p className="mt-1 break-words text-danger">
+                          {file.errorMessage}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
             {run.artifacts.length > 0 ? (
               <ul className="space-y-2 border-t border-line pt-3">
                 {run.artifacts.map((artifact) => (
@@ -161,8 +175,18 @@ export function GenerationHistory({
                     key={artifact.id}
                     className="flex flex-wrap items-center justify-between gap-3"
                   >
-                    <span className="min-w-0 break-all text-sm text-ink-muted">
-                      {artifact.fileName}
+                    <span className="min-w-0 text-sm">
+                      <span className="break-all font-semibold text-ink">
+                        {artifact.fileName}
+                      </span>
+                      {typeof artifact.rowCount === 'number' ? (
+                        <span className="text-ink-muted">
+                          {' · '}
+                          {artifact.rowCount === 1
+                            ? t('artifactRowsOne')
+                            : t('artifactRows', { count: artifact.rowCount })}
+                        </span>
+                      ) : null}
                     </span>
                     <Button
                       variant="secondary"

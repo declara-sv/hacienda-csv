@@ -1,0 +1,194 @@
+{
+  "spec_id": "f07_anexo2_v2025",
+  "version": "2025",
+  "anexo": 2,
+  "description": "Anexo 2 F-07: detalle de ventas a consumidor final (DTE 01), una fila por día y códigos de Renta. Manual 700-DGII-MN-2021-026; columnas U/V de Renta obligatorias desde 01/2025, '0' antes. Diseño DTE vigente desde 11/2022.",
+  "valid_from": "2022-11",
+  "valid_to": null,
+  "column_count": 23,
+  "file": {
+    "delimiter": ";",
+    "line_ending": "\r\n",
+    "encoding": "windows-1252",
+    "header": false,
+    "file_name_pattern": "anexo2_{yyyymm}.csv",
+    "max_file_name_length": 25
+  },
+  "columns": [
+    {
+      "letter": "A",
+      "name": "Fecha de emisión",
+      "kind": "field",
+      "source": "fecha_emision",
+      "format": "date"
+    },
+    {
+      "letter": "B",
+      "name": "Clase de documento",
+      "kind": "constant",
+      "value": "4",
+      "format": "text",
+      "width": 1
+    },
+    {
+      "letter": "C",
+      "name": "Tipo de documento",
+      "kind": "field",
+      "source": "tipo_dte",
+      "format": "text",
+      "width": 2
+    },
+    {
+      "letter": "D",
+      "name": "Número de resolución",
+      "kind": "constant",
+      "value": "N/A",
+      "format": "text"
+    },
+    {
+      "letter": "E",
+      "name": "Serie del documento",
+      "kind": "constant",
+      "value": "N/A",
+      "format": "text"
+    },
+    {
+      "letter": "F",
+      "name": "Número de control interno (del)",
+      "kind": "constant",
+      "value": "N/A",
+      "format": "text"
+    },
+    {
+      "letter": "G",
+      "name": "Número de control interno (al)",
+      "kind": "constant",
+      "value": "N/A",
+      "format": "text"
+    },
+    {
+      "letter": "H",
+      "name": "Número de documento (del): código de generación del primer DTE",
+      "kind": "field",
+      "source": "codigo_generacion_del",
+      "format": "text",
+      "strip_dashes": false
+    },
+    {
+      "letter": "I",
+      "name": "Número de documento (al): código de generación del último DTE",
+      "kind": "field",
+      "source": "codigo_generacion_al",
+      "format": "text",
+      "strip_dashes": false
+    },
+    {
+      "letter": "J",
+      "name": "Número de máquina registradora",
+      "kind": "constant",
+      "value": "",
+      "format": "text"
+    },
+    {
+      "letter": "K",
+      "name": "Ventas exentas",
+      "kind": "field",
+      "source": "total_exentas",
+      "format": "money"
+    },
+    {
+      "letter": "L",
+      "name": "Ventas internas exentas no sujetas a proporcionalidad",
+      "kind": "constant",
+      "value": "0.00",
+      "format": "money"
+    },
+    {
+      "letter": "M",
+      "name": "Ventas no sujetas",
+      "kind": "field",
+      "source": "total_no_sujetas",
+      "format": "money"
+    },
+    {
+      "letter": "N",
+      "name": "Ventas gravadas locales (IVA incluido)",
+      "kind": "field",
+      "source": "total_gravadas",
+      "format": "money"
+    },
+    {
+      "letter": "O",
+      "name": "Exportaciones dentro del área de Centroamérica",
+      "kind": "constant",
+      "value": "0.00",
+      "format": "money"
+    },
+    {
+      "letter": "P",
+      "name": "Exportaciones fuera del área de Centroamérica",
+      "kind": "constant",
+      "value": "0.00",
+      "format": "money"
+    },
+    {
+      "letter": "Q",
+      "name": "Exportaciones de servicios",
+      "kind": "constant",
+      "value": "0.00",
+      "format": "money"
+    },
+    {
+      "letter": "R",
+      "name": "Ventas a zonas francas y DPA (tasa cero)",
+      "kind": "constant",
+      "value": "0.00",
+      "format": "money"
+    },
+    {
+      "letter": "S",
+      "name": "Ventas a cuenta de terceros no domiciliados",
+      "kind": "constant",
+      "value": "0.00",
+      "format": "money"
+    },
+    {
+      "letter": "T",
+      "name": "Total de ventas",
+      "kind": "sum",
+      "format": "money",
+      "sum_of": [
+        "K",
+        "L",
+        "M",
+        "N",
+        "O",
+        "P",
+        "Q",
+        "R",
+        "S"
+      ]
+    },
+    {
+      "letter": "U",
+      "name": "Tipo de operación (Renta)",
+      "kind": "field",
+      "source": "tipo_operacion_renta",
+      "format": "text"
+    },
+    {
+      "letter": "V",
+      "name": "Tipo de ingreso (Renta)",
+      "kind": "field",
+      "source": "tipo_ingreso_renta",
+      "format": "text"
+    },
+    {
+      "letter": "W",
+      "name": "Número del anexo",
+      "kind": "constant",
+      "value": "2",
+      "format": "text"
+    }
+  ]
+}

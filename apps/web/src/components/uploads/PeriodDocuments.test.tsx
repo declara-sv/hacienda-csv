@@ -12,7 +12,14 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PeriodDocuments } from './PeriodDocuments'
 import { I18nProvider } from '#/i18n/I18nProvider'
-import { ApiError, runsApi, uploadsApi } from '#/lib/api-client'
+import {
+  ApiError,
+  catalogsApi,
+  documentsApi,
+  runsApi,
+  uploadsApi,
+} from '#/lib/api-client'
+import { documentDto, rentaCatalog } from '#/test/fixtures'
 import type * as ApiClient from '#/lib/api-client'
 import type { GenerationRun, GenerationRunFile, Upload } from '#/lib/api-types'
 
@@ -22,9 +29,12 @@ vi.mock('#/lib/api-client', async (importOriginal) => ({
     list: vi.fn(),
     create: vi.fn(),
     remove: vi.fn(),
+    reextract: vi.fn(),
     downloadArtifact: vi.fn(),
   },
   runsApi: { list: vi.fn(), create: vi.fn() },
+  documentsApi: { list: vi.fn(), update: vi.fn(), bulkUpdate: vi.fn() },
+  catalogsApi: { renta: vi.fn() },
 }))
 
 const listUploads = vi.mocked(uploadsApi.list)
@@ -33,6 +43,9 @@ const removeUpload = vi.mocked(uploadsApi.remove)
 const downloadArtifact = vi.mocked(uploadsApi.downloadArtifact)
 const listRuns = vi.mocked(runsApi.list)
 const createRun = vi.mocked(runsApi.create)
+const reextractUpload = vi.mocked(uploadsApi.reextract)
+const listDocuments = vi.mocked(documentsApi.list)
+const rentaCatalogApi = vi.mocked(catalogsApi.renta)
 
 function defer<T>() {
   let resolve!: (value: T) => void
@@ -54,6 +67,9 @@ function upload(id: string, overrides: Partial<Upload> = {}): Upload {
     sizeBytes: 2048,
     createdAtUtc: '2026-09-01T10:00:00Z',
     includedInLatestRun: false,
+    extractionStatus: 'Completed',
+    extractionError: null,
+    documentsCount: 1,
     ...overrides,
   }
 }
@@ -82,6 +98,7 @@ function run(version: number, overrides: Partial<GenerationRun> = {}) {
     startedAtUtc: '2026-09-01T12:01:00Z',
     completedAtUtc: '2026-09-01T12:02:00Z',
     files: [],
+    issues: [],
     artifacts: [
       {
         id: `csv-${version}`,
@@ -130,12 +147,14 @@ async function tick(ms = 1) {
 
 const button = (name: string | RegExp) =>
   screen.getByRole<HTMLButtonElement>('button', { name })
-const generateButton = () => button('Generar CSV')
+const generateButton = () => button('Generar anexos')
 
 beforeEach(() => {
   vi.resetAllMocks()
   listUploads.mockResolvedValue([])
   listRuns.mockResolvedValue([])
+  listDocuments.mockResolvedValue([documentDto('d1')])
+  rentaCatalogApi.mockResolvedValue(rentaCatalog)
 })
 
 afterEach(() => {
@@ -255,7 +274,9 @@ describe('PeriodDocuments', () => {
     listUploads.mockResolvedValue([])
     setup()
 
-    await screen.findByText('Sube al menos un documento para generar el CSV.')
+    await screen.findByText(
+      'Sube al menos un documento para generar los anexos.',
+    )
     expect(generateButton().disabled).toBe(true)
 
     listUploads.mockResolvedValue([upload('u1')])
@@ -310,9 +331,13 @@ describe('PeriodDocuments', () => {
     fireEvent.click(button('Eliminar u1.xlsx'))
     fireEvent.click(generateButton())
 
-    expect(
-      screen.getByLabelText<HTMLInputElement>('Seleccionar archivos').disabled,
-    ).toBe(true)
+    // React Query publishes the pending state on its own tick.
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText<HTMLInputElement>('Seleccionar archivos')
+          .disabled,
+      ).toBe(true),
+    )
     expect(button('Subir archivos').disabled).toBe(true)
     expect(button('Eliminar u2.xlsx').disabled).toBe(true)
     expect(button('Sí, eliminar').disabled).toBe(true)
@@ -343,7 +368,9 @@ describe('PeriodDocuments', () => {
 
     listUploads.mockResolvedValue([])
     await act(async () => removed.resolve())
-    await screen.findByText('Sube al menos un documento para generar el CSV.')
+    await screen.findByText(
+      'Sube al menos un documento para generar los anexos.',
+    )
     expect(createRun).not.toHaveBeenCalled()
   })
 
@@ -678,5 +705,170 @@ describe('PeriodDocuments', () => {
     expect(screen.queryByText('u1.xlsx')).toBeNull()
     expect(screen.queryByText('Período cerrado.')).toBeNull()
     expect(screen.queryByText('pendiente.xlsx')).toBeNull()
+  })
+
+  it('shows the extraction status of each file', async () => {
+    listUploads.mockResolvedValue([
+      upload('a', { extractionStatus: 'Pending', documentsCount: 0 }),
+      upload('b', { extractionStatus: 'Running', documentsCount: 0 }),
+      upload('c', { extractionStatus: 'Completed', documentsCount: 3 }),
+      upload('d', { extractionStatus: 'Completed', documentsCount: 1 }),
+      upload('e', {
+        extractionStatus: 'Failed',
+        extractionError: 'El PDF no tiene texto legible.',
+        documentsCount: 0,
+      }),
+    ])
+    setup()
+
+    const list = await screen.findByRole('list', {
+      name: 'Listado de documentos',
+    })
+    const items = within(list).getAllByRole('listitem')
+    expect(within(items[0]).getByText('En cola para leer')).toBeTruthy()
+    expect(within(items[1]).getByText('Leyendo el archivo')).toBeTruthy()
+    expect(within(items[2]).getByText('Leído: 3 documentos')).toBeTruthy()
+    expect(within(items[3]).getByText('Leído: 1 documento')).toBeTruthy()
+    expect(
+      within(items[4]).getByText('No se pudo leer el archivo'),
+    ).toBeTruthy()
+    expect(
+      within(items[4]).getByText('El PDF no tiene texto legible.'),
+    ).toBeTruthy()
+    // Only failed files offer to read again.
+    expect(
+      within(items[2]).queryByRole('button', { name: /Volver a leer/ }),
+    ).toBeNull()
+    expect(
+      within(items[4]).getByRole('button', { name: 'Volver a leer e.xlsx' }),
+    ).toBeTruthy()
+  })
+
+  it('reads a failed file again and refreshes files and documents', async () => {
+    listUploads.mockResolvedValue([
+      upload('u1', {
+        extractionStatus: 'Failed',
+        extractionError: 'Plantilla desconocida.',
+      }),
+    ])
+    reextractUpload.mockResolvedValue(
+      upload('u1', { extractionStatus: 'Pending' }),
+    )
+    setup()
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Volver a leer u1.xlsx' }),
+    )
+    await waitFor(() =>
+      expect(reextractUpload).toHaveBeenCalledWith('client', 'period', 'u1'),
+    )
+    await waitFor(() => expect(listUploads).toHaveBeenCalledTimes(2))
+    expect(listDocuments).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports a failed re-read', async () => {
+    listUploads.mockResolvedValue([
+      upload('u1', { extractionStatus: 'Failed' }),
+    ])
+    reextractUpload.mockRejectedValue(
+      new ApiError(409, 'El archivo ya se está leyendo.', null),
+    )
+    setup()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Volver a leer u1.xlsx' }),
+    )
+    await screen.findByText('El archivo ya se está leyendo.')
+  })
+
+  it('polls files and documents while extraction runs and blocks generation', async () => {
+    vi.useFakeTimers()
+    listUploads.mockResolvedValue([
+      upload('u1', { extractionStatus: 'Running', documentsCount: 0 }),
+    ])
+    listDocuments.mockResolvedValue([])
+    setup()
+    await tick()
+
+    expect(screen.getByText('Leyendo el archivo')).toBeTruthy()
+    expect(
+      screen.getByText('Espera a que termine la lectura de los archivos.'),
+    ).toBeTruthy()
+    expect(generateButton().disabled).toBe(true)
+    expect(listUploads).toHaveBeenCalledTimes(1)
+    expect(listDocuments).toHaveBeenCalledTimes(1)
+
+    await tick(3000)
+    expect(listUploads).toHaveBeenCalledTimes(2)
+    expect(listDocuments).toHaveBeenCalledTimes(2)
+
+    listUploads.mockResolvedValue([
+      upload('u1', { extractionStatus: 'Completed', documentsCount: 1 }),
+    ])
+    listDocuments.mockResolvedValue([documentDto('d1')])
+    await tick(3000)
+    await tick()
+
+    expect(screen.getByText('Leído: 1 documento')).toBeTruthy()
+    // Finishing re-reads the documents one last time, then polling stops.
+    const documentsCalls = listDocuments.mock.calls.length
+    expect(documentsCalls).toBeGreaterThanOrEqual(3)
+    expect(generateButton().disabled).toBe(false)
+
+    await tick(15000)
+    expect(listUploads).toHaveBeenCalledTimes(3)
+    expect(listDocuments).toHaveBeenCalledTimes(documentsCalls)
+  })
+
+  it('blocks generation while included documents have errors, not for excluded ones', async () => {
+    listUploads.mockResolvedValue([upload('u1')])
+    const failing = documentDto('d2', {
+      status: 'Error',
+      issues: [
+        {
+          code: 'period',
+          severity: 'Error',
+          message: 'Fuera del período',
+          field: null,
+        },
+      ],
+    })
+    listDocuments.mockResolvedValue([documentDto('d1'), failing])
+    setup()
+
+    await screen.findByText(
+      'Hay 1 documento(s) con errores. Corrígelos o exclúyelos antes de generar.',
+    )
+    expect(generateButton().disabled).toBe(true)
+
+    listDocuments.mockResolvedValue([
+      documentDto('d1'),
+      { ...failing, excluded: true },
+    ])
+    fireEvent.click(button('Actualizar'))
+    await waitFor(() => expect(generateButton().disabled).toBe(false))
+  })
+
+  it('blocks generation when every document is excluded', async () => {
+    listUploads.mockResolvedValue([upload('u1')])
+    listDocuments.mockResolvedValue([documentDto('d1', { excluded: true })])
+    setup()
+
+    await screen.findByText(
+      'No hay documentos incluidos. Incluye al menos uno para generar.',
+    )
+    expect(generateButton().disabled).toBe(true)
+  })
+
+  it('shows the review table for the period documents', async () => {
+    listUploads.mockResolvedValue([upload('u1')])
+    listDocuments.mockResolvedValue([
+      documentDto('d1', { receptorNombre: 'Consumidor final' }),
+    ])
+    setup()
+
+    const table = await screen.findByRole('table', {
+      name: 'Documentos leídos del período',
+    })
+    expect(within(table).getByText('Consumidor final')).toBeTruthy()
   })
 })

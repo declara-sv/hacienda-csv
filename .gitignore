@@ -6,19 +6,25 @@ node_modules/
 apps/web/dist/
 apps/web/.tanstack/
 
-# .NET
-**/bin/
-**/obj/
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
 # Local data
-apps/api/Accounting.Api/App_Data/
-apps/api/Accounting.Api/.env
+apps/api/App_Data/
+apps/api/.env
+apps/api/.env.*
+!apps/api/.env.example
+apps/api/tests/fixtures/private/
 apps/web/.env
 supabase/.temp/
 supabase/.branches/
 
 # OS
 .DS_Store
-
-# Python workflow tests
-__pycache__/

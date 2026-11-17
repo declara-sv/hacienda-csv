@@ -9,18 +9,27 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as RegistroRouteImport } from './routes/registro'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as ClientesRouteImport } from './routes/clientes'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ClientesIndexRouteImport } from './routes/clientes.index'
-import { Route as ClientesClientIdRouteImport } from './routes/clientes.$clientId'
-import { Route as ClientesClientIdIndexRouteImport } from './routes/clientes.$clientId.index'
-import { Route as ClientesClientIdPeriodosPeriodIdCargasRouteImport } from './routes/clientes.$clientId.periodos.$periodId.cargas'
+import { Route as ClientsRouteImport } from './routes/clients'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as SignupRouteImport } from './routes/signup'
+import { Route as ClientsIndexRouteImport } from './routes/clients.index'
+import { Route as ClientsClientIdRouteImport } from './routes/clients.$clientId'
+import { Route as LoginIndexRouteImport } from './routes/login.index'
+import { Route as LoginSplatRouteImport } from './routes/login.$'
+import { Route as SignupIndexRouteImport } from './routes/signup.index'
+import { Route as SignupSplatRouteImport } from './routes/signup.$'
+import { Route as ClientsClientIdIndexRouteImport } from './routes/clients.$clientId.index'
+import { Route as ClientsClientIdPeriodsPeriodIdUploadsRouteImport } from './routes/clients.$clientId.periods.$periodId.uploads'
 
-const RegistroRoute = RegistroRouteImport.update({
-  id: '/registro',
-  path: '/registro',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsRoute = ClientsRouteImport.update({
+  id: '/clients',
+  path: '/clients',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -28,112 +37,154 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ClientesRoute = ClientesRouteImport.update({
-  id: '/clientes',
-  path: '/clientes',
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
+const ClientsIndexRoute = ClientsIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => ClientsRoute,
 } as any)
-const ClientesIndexRoute = ClientesIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => ClientesRoute,
-} as any)
-const ClientesClientIdRoute = ClientesClientIdRouteImport.update({
+const ClientsClientIdRoute = ClientsClientIdRouteImport.update({
   id: '/$clientId',
   path: '/$clientId',
-  getParentRoute: () => ClientesRoute,
+  getParentRoute: () => ClientsRoute,
 } as any)
-const ClientesClientIdIndexRoute = ClientesClientIdIndexRouteImport.update({
+const LoginIndexRoute = LoginIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => ClientesClientIdRoute,
+  getParentRoute: () => LoginRoute,
 } as any)
-const ClientesClientIdPeriodosPeriodIdCargasRoute =
-  ClientesClientIdPeriodosPeriodIdCargasRouteImport.update({
-    id: '/periodos/$periodId/cargas',
-    path: '/periodos/$periodId/cargas',
-    getParentRoute: () => ClientesClientIdRoute,
+const LoginSplatRoute = LoginSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => LoginRoute,
+} as any)
+const SignupIndexRoute = SignupIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SignupRoute,
+} as any)
+const SignupSplatRoute = SignupSplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => SignupRoute,
+} as any)
+const ClientsClientIdIndexRoute = ClientsClientIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ClientsClientIdRoute,
+} as any)
+const ClientsClientIdPeriodsPeriodIdUploadsRoute =
+  ClientsClientIdPeriodsPeriodIdUploadsRouteImport.update({
+    id: '/periods/$periodId/uploads',
+    path: '/periods/$periodId/uploads',
+    getParentRoute: () => ClientsClientIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/clientes': typeof ClientesRouteWithChildren
-  '/login': typeof LoginRoute
-  '/registro': typeof RegistroRoute
-  '/clientes/$clientId': typeof ClientesClientIdRouteWithChildren
-  '/clientes/': typeof ClientesIndexRoute
-  '/clientes/$clientId/': typeof ClientesClientIdIndexRoute
-  '/clientes/$clientId/periodos/$periodId/cargas': typeof ClientesClientIdPeriodosPeriodIdCargasRoute
+  '/clients': typeof ClientsRouteWithChildren
+  '/login': typeof LoginRouteWithChildren
+  '/signup': typeof SignupRouteWithChildren
+  '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
+  '/login/$': typeof LoginSplatRoute
+  '/signup/$': typeof SignupSplatRoute
+  '/clients/': typeof ClientsIndexRoute
+  '/login/': typeof LoginIndexRoute
+  '/signup/': typeof SignupIndexRoute
+  '/clients/$clientId/': typeof ClientsClientIdIndexRoute
+  '/clients/$clientId/periods/$periodId/uploads': typeof ClientsClientIdPeriodsPeriodIdUploadsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/login': typeof LoginRoute
-  '/registro': typeof RegistroRoute
-  '/clientes': typeof ClientesIndexRoute
-  '/clientes/$clientId': typeof ClientesClientIdIndexRoute
-  '/clientes/$clientId/periodos/$periodId/cargas': typeof ClientesClientIdPeriodosPeriodIdCargasRoute
+  '/login/$': typeof LoginSplatRoute
+  '/signup/$': typeof SignupSplatRoute
+  '/clients': typeof ClientsIndexRoute
+  '/login': typeof LoginIndexRoute
+  '/signup': typeof SignupIndexRoute
+  '/clients/$clientId': typeof ClientsClientIdIndexRoute
+  '/clients/$clientId/periods/$periodId/uploads': typeof ClientsClientIdPeriodsPeriodIdUploadsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/clientes': typeof ClientesRouteWithChildren
-  '/login': typeof LoginRoute
-  '/registro': typeof RegistroRoute
-  '/clientes/$clientId': typeof ClientesClientIdRouteWithChildren
-  '/clientes/': typeof ClientesIndexRoute
-  '/clientes/$clientId/': typeof ClientesClientIdIndexRoute
-  '/clientes/$clientId/periodos/$periodId/cargas': typeof ClientesClientIdPeriodosPeriodIdCargasRoute
+  '/clients': typeof ClientsRouteWithChildren
+  '/login': typeof LoginRouteWithChildren
+  '/signup': typeof SignupRouteWithChildren
+  '/clients/$clientId': typeof ClientsClientIdRouteWithChildren
+  '/login/$': typeof LoginSplatRoute
+  '/signup/$': typeof SignupSplatRoute
+  '/clients/': typeof ClientsIndexRoute
+  '/login/': typeof LoginIndexRoute
+  '/signup/': typeof SignupIndexRoute
+  '/clients/$clientId/': typeof ClientsClientIdIndexRoute
+  '/clients/$clientId/periods/$periodId/uploads': typeof ClientsClientIdPeriodsPeriodIdUploadsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/clientes'
+    | '/clients'
     | '/login'
-    | '/registro'
-    | '/clientes/$clientId'
-    | '/clientes/'
-    | '/clientes/$clientId/'
-    | '/clientes/$clientId/periodos/$periodId/cargas'
+    | '/signup'
+    | '/clients/$clientId'
+    | '/login/$'
+    | '/signup/$'
+    | '/clients/'
+    | '/login/'
+    | '/signup/'
+    | '/clients/$clientId/'
+    | '/clients/$clientId/periods/$periodId/uploads'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/login/$'
+    | '/signup/$'
+    | '/clients'
     | '/login'
-    | '/registro'
-    | '/clientes'
-    | '/clientes/$clientId'
-    | '/clientes/$clientId/periodos/$periodId/cargas'
+    | '/signup'
+    | '/clients/$clientId'
+    | '/clients/$clientId/periods/$periodId/uploads'
   id:
     | '__root__'
     | '/'
-    | '/clientes'
+    | '/clients'
     | '/login'
-    | '/registro'
-    | '/clientes/$clientId'
-    | '/clientes/'
-    | '/clientes/$clientId/'
-    | '/clientes/$clientId/periodos/$periodId/cargas'
+    | '/signup'
+    | '/clients/$clientId'
+    | '/login/$'
+    | '/signup/$'
+    | '/clients/'
+    | '/login/'
+    | '/signup/'
+    | '/clients/$clientId/'
+    | '/clients/$clientId/periods/$periodId/uploads'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ClientesRoute: typeof ClientesRouteWithChildren
-  LoginRoute: typeof LoginRoute
-  RegistroRoute: typeof RegistroRoute
+  ClientsRoute: typeof ClientsRouteWithChildren
+  LoginRoute: typeof LoginRouteWithChildren
+  SignupRoute: typeof SignupRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/registro': {
-      id: '/registro'
-      path: '/registro'
-      fullPath: '/registro'
-      preLoaderRoute: typeof RegistroRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients': {
+      id: '/clients'
+      path: '/clients'
+      fullPath: '/clients'
+      preLoaderRoute: typeof ClientsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -143,94 +194,141 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/clientes': {
-      id: '/clientes'
-      path: '/clientes'
-      fullPath: '/clientes'
-      preLoaderRoute: typeof ClientesRouteImport
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
+    '/clients/': {
+      id: '/clients/'
       path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/clients/'
+      preLoaderRoute: typeof ClientsIndexRouteImport
+      parentRoute: typeof ClientsRoute
     }
-    '/clientes/': {
-      id: '/clientes/'
-      path: '/'
-      fullPath: '/clientes/'
-      preLoaderRoute: typeof ClientesIndexRouteImport
-      parentRoute: typeof ClientesRoute
-    }
-    '/clientes/$clientId': {
-      id: '/clientes/$clientId'
+    '/clients/$clientId': {
+      id: '/clients/$clientId'
       path: '/$clientId'
-      fullPath: '/clientes/$clientId'
-      preLoaderRoute: typeof ClientesClientIdRouteImport
-      parentRoute: typeof ClientesRoute
+      fullPath: '/clients/$clientId'
+      preLoaderRoute: typeof ClientsClientIdRouteImport
+      parentRoute: typeof ClientsRoute
     }
-    '/clientes/$clientId/': {
-      id: '/clientes/$clientId/'
+    '/login/': {
+      id: '/login/'
       path: '/'
-      fullPath: '/clientes/$clientId/'
-      preLoaderRoute: typeof ClientesClientIdIndexRouteImport
-      parentRoute: typeof ClientesClientIdRoute
+      fullPath: '/login/'
+      preLoaderRoute: typeof LoginIndexRouteImport
+      parentRoute: typeof LoginRoute
     }
-    '/clientes/$clientId/periodos/$periodId/cargas': {
-      id: '/clientes/$clientId/periodos/$periodId/cargas'
-      path: '/periodos/$periodId/cargas'
-      fullPath: '/clientes/$clientId/periodos/$periodId/cargas'
-      preLoaderRoute: typeof ClientesClientIdPeriodosPeriodIdCargasRouteImport
-      parentRoute: typeof ClientesClientIdRoute
+    '/login/$': {
+      id: '/login/$'
+      path: '/$'
+      fullPath: '/login/$'
+      preLoaderRoute: typeof LoginSplatRouteImport
+      parentRoute: typeof LoginRoute
+    }
+    '/signup/': {
+      id: '/signup/'
+      path: '/'
+      fullPath: '/signup/'
+      preLoaderRoute: typeof SignupIndexRouteImport
+      parentRoute: typeof SignupRoute
+    }
+    '/signup/$': {
+      id: '/signup/$'
+      path: '/$'
+      fullPath: '/signup/$'
+      preLoaderRoute: typeof SignupSplatRouteImport
+      parentRoute: typeof SignupRoute
+    }
+    '/clients/$clientId/': {
+      id: '/clients/$clientId/'
+      path: '/'
+      fullPath: '/clients/$clientId/'
+      preLoaderRoute: typeof ClientsClientIdIndexRouteImport
+      parentRoute: typeof ClientsClientIdRoute
+    }
+    '/clients/$clientId/periods/$periodId/uploads': {
+      id: '/clients/$clientId/periods/$periodId/uploads'
+      path: '/periods/$periodId/uploads'
+      fullPath: '/clients/$clientId/periods/$periodId/uploads'
+      preLoaderRoute: typeof ClientsClientIdPeriodsPeriodIdUploadsRouteImport
+      parentRoute: typeof ClientsClientIdRoute
     }
   }
 }
 
-interface ClientesClientIdRouteChildren {
-  ClientesClientIdIndexRoute: typeof ClientesClientIdIndexRoute
-  ClientesClientIdPeriodosPeriodIdCargasRoute: typeof ClientesClientIdPeriodosPeriodIdCargasRoute
+interface ClientsClientIdRouteChildren {
+  ClientsClientIdIndexRoute: typeof ClientsClientIdIndexRoute
+  ClientsClientIdPeriodsPeriodIdUploadsRoute: typeof ClientsClientIdPeriodsPeriodIdUploadsRoute
 }
 
-const ClientesClientIdRouteChildren: ClientesClientIdRouteChildren = {
-  ClientesClientIdIndexRoute: ClientesClientIdIndexRoute,
-  ClientesClientIdPeriodosPeriodIdCargasRoute:
-    ClientesClientIdPeriodosPeriodIdCargasRoute,
+const ClientsClientIdRouteChildren: ClientsClientIdRouteChildren = {
+  ClientsClientIdIndexRoute: ClientsClientIdIndexRoute,
+  ClientsClientIdPeriodsPeriodIdUploadsRoute:
+    ClientsClientIdPeriodsPeriodIdUploadsRoute,
 }
 
-const ClientesClientIdRouteWithChildren =
-  ClientesClientIdRoute._addFileChildren(ClientesClientIdRouteChildren)
-
-interface ClientesRouteChildren {
-  ClientesClientIdRoute: typeof ClientesClientIdRouteWithChildren
-  ClientesIndexRoute: typeof ClientesIndexRoute
-}
-
-const ClientesRouteChildren: ClientesRouteChildren = {
-  ClientesClientIdRoute: ClientesClientIdRouteWithChildren,
-  ClientesIndexRoute: ClientesIndexRoute,
-}
-
-const ClientesRouteWithChildren = ClientesRoute._addFileChildren(
-  ClientesRouteChildren,
+const ClientsClientIdRouteWithChildren = ClientsClientIdRoute._addFileChildren(
+  ClientsClientIdRouteChildren,
 )
+
+interface ClientsRouteChildren {
+  ClientsClientIdRoute: typeof ClientsClientIdRouteWithChildren
+  ClientsIndexRoute: typeof ClientsIndexRoute
+}
+
+const ClientsRouteChildren: ClientsRouteChildren = {
+  ClientsClientIdRoute: ClientsClientIdRouteWithChildren,
+  ClientsIndexRoute: ClientsIndexRoute,
+}
+
+const ClientsRouteWithChildren =
+  ClientsRoute._addFileChildren(ClientsRouteChildren)
+
+interface LoginRouteChildren {
+  LoginSplatRoute: typeof LoginSplatRoute
+  LoginIndexRoute: typeof LoginIndexRoute
+}
+
+const LoginRouteChildren: LoginRouteChildren = {
+  LoginSplatRoute: LoginSplatRoute,
+  LoginIndexRoute: LoginIndexRoute,
+}
+
+const LoginRouteWithChildren = LoginRoute._addFileChildren(LoginRouteChildren)
+
+interface SignupRouteChildren {
+  SignupSplatRoute: typeof SignupSplatRoute
+  SignupIndexRoute: typeof SignupIndexRoute
+}
+
+const SignupRouteChildren: SignupRouteChildren = {
+  SignupSplatRoute: SignupSplatRoute,
+  SignupIndexRoute: SignupIndexRoute,
+}
+
+const SignupRouteWithChildren =
+  SignupRoute._addFileChildren(SignupRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ClientesRoute: ClientesRouteWithChildren,
-  LoginRoute: LoginRoute,
-  RegistroRoute: RegistroRoute,
+  ClientsRoute: ClientsRouteWithChildren,
+  LoginRoute: LoginRouteWithChildren,
+  SignupRoute: SignupRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }

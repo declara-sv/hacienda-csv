@@ -1,0 +1,11 @@
+Migrations
+
+One file per schema change, numbered in order (0001_..., 0002_...). Never edit a migration that
+has been applied anywhere; add a new one instead:
+
+    uv run alembic revision --autogenerate -m "describe the change"
+    # rename the file to NNNN_description.py, review it, then:
+    uv run alembic upgrade head
+
+Every new table must enable row-level security in the same migration
+(ALTER TABLE ... ENABLE ROW LEVEL SECURITY); tests/test_migrations.py enforces it.

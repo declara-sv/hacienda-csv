@@ -28,6 +28,7 @@ function run(
     startedAtUtc: '2026-09-01T12:01:00Z',
     completedAtUtc: '2026-09-01T12:02:00Z',
     files: [],
+    issues: [],
     artifacts: [
       {
         id: `csv-${version}`,
@@ -178,5 +179,55 @@ describe('GenerationHistory', () => {
     expect(buttons[1].hasAttribute('disabled')).toBe(false)
     fireEvent.click(buttons[1])
     expect(onDownload).toHaveBeenCalledWith(old.artifacts[0])
+  })
+
+  it('lists run warnings and the row count of each anexo', () => {
+    show({
+      runs: [
+        run(1, {
+          issues: [
+            {
+              code: 'skipped',
+              severity: 'Warning',
+              message: 'Se omitió un comprobante de retención (07).',
+              field: null,
+            },
+          ],
+          artifacts: [
+            {
+              id: 'a1',
+              artifactKind: 'Anexo1',
+              fileName: 'anexo1_202510.csv',
+              createdAtUtc: '2026-09-01T12:02:00Z',
+              sizeBytes: 100,
+              rowCount: 12,
+            },
+            {
+              id: 'a2',
+              artifactKind: 'Anexo2',
+              fileName: 'anexo2_202510.csv',
+              createdAtUtc: '2026-09-01T12:02:00Z',
+              sizeBytes: 100,
+              rowCount: 1,
+            },
+          ],
+        }),
+      ],
+    })
+
+    expect(screen.getByText('Advertencias de esta versión (1)')).toBeTruthy()
+    expect(
+      screen.getByText('Se omitió un comprobante de retención (07).'),
+    ).toBeTruthy()
+    expect(screen.getByText('anexo1_202510.csv')).toBeTruthy()
+    expect(screen.getByText(/12 filas/)).toBeTruthy()
+    expect(screen.getByText(/1 fila$/)).toBeTruthy()
+    expect(
+      screen.getByRole('button', {
+        name: 'Descargar CSV: anexo2_202510.csv',
+      }),
+    ).toBeTruthy()
+    // Runs without file snapshots no longer show an empty file list.
+    expect(screen.queryByText('Archivos de esta versión (0)')).toBeNull()
   })
 })

@@ -1,9 +1,9 @@
-import { AlertCircle, CheckCircle2, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, X } from 'lucide-react'
 import { useI18n } from '#/i18n/I18nProvider'
 import { cn } from '#/lib/cn'
 
 type NoticeProps = {
-  variant: 'error' | 'success'
+  variant: 'error' | 'success' | 'warning'
   children: React.ReactNode
   onDismiss?: () => void
   className?: string
@@ -17,19 +17,27 @@ export function Notice({
 }: NoticeProps) {
   const { t } = useI18n()
   const isError = variant === 'error'
-  const Icon = isError ? AlertCircle : CheckCircle2
+  const Icon = isError
+    ? AlertCircle
+    : variant === 'warning'
+      ? AlertTriangle
+      : CheckCircle2
 
   return (
     <div
       role={isError ? 'alert' : 'status'}
       className={cn(
         'rise flex items-start gap-3 rounded-control px-3 py-2.5 text-sm',
-        isError ? 'bg-danger-soft text-danger' : 'bg-success-soft text-success',
+        isError
+          ? 'bg-danger-soft text-danger'
+          : variant === 'warning'
+            ? 'bg-warning-soft text-warning'
+            : 'bg-success-soft text-success',
         className,
       )}
     >
       <Icon className="mt-0.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
-      <p className="flex-1">{children}</p>
+      <div className="flex-1">{children}</div>
       {onDismiss ? (
         <button
           type="button"

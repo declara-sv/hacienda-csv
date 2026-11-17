@@ -1,32 +1,60 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock,
   FileSpreadsheet,
   FileText,
   Inbox,
+  Loader2,
   RefreshCw,
+  RotateCw,
   Sparkles,
   Trash2,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { GenerationHistory } from './GenerationHistory'
 import { fileInputId, MultiFileUpload } from './MultiFileUpload'
+import {
+  PeriodReview,
+  documentsQueryKey,
+} from '#/components/review/PeriodReview'
 import { Button } from '#/components/ui/Button'
 import { EmptyState } from '#/components/ui/EmptyState'
 import { Notice } from '#/components/ui/Notice'
 import { Section } from '#/components/ui/PageHeader'
 import { RowListSkeleton } from '#/components/ui/Skeleton'
 import { useI18n } from '#/i18n/I18nProvider'
-import { ApiError, runsApi, uploadsApi } from '#/lib/api-client'
+import { ApiError, documentsApi, runsApi, uploadsApi } from '#/lib/api-client'
+import { summarizeDocuments } from '#/lib/dte'
 import { formatBytes, formatDateTime } from '#/lib/format'
 import type { UploadQueueState } from './MultiFileUpload'
 import type { MessageKey } from '#/i18n/messages'
-import type { Artifact, GenerationRun } from '#/lib/api-types'
+import type { ClientRentaDefaults } from '#/components/review/DocumentEditDialog'
+import type { Artifact, GenerationRun, Upload } from '#/lib/api-types'
 import type { CSSProperties } from 'react'
 
-type Props = { clientId: string; periodId: string }
+type Props = {
+  clientId: string
+  periodId: string
+  /** The client's Renta defaults, shown as the fallback in the review. */
+  clientDefaults?: ClientRentaDefaults | null
+}
 
 const isActive = (run: GenerationRun) =>
   run.status === 'Pending' || run.status === 'Running'
+
+const isExtracting = (upload: Upload) =>
+  upload.extractionStatus === 'Pending' || upload.extractionStatus === 'Running'
+
+const EXTRACTION_POLL_MS = 3000
+
+type BlockedReason = { key: MessageKey; vars?: Record<string, number> }
 
 const messageOf = (error: unknown, fallback: string) =>
   error instanceof ApiError ? error.message : fallback
@@ -43,7 +71,11 @@ const focusById = (id: string) => {
  * Documents and generation runs of one filing period. Mount with a period key:
  * the local upload queue and mutation notices must not survive navigation.
  */
-export function PeriodDocuments({ clientId, periodId }: Props) {
+export function PeriodDocuments({
+  clientId,
+  periodId,
+  clientDefaults = null,
+}: Props) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
 
@@ -53,6 +85,10 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
   )
   const runsKey = useMemo(
     () => ['runs', clientId, periodId],
+    [clientId, periodId],
+  )
+  const documentsKey = useMemo(
+    () => documentsQueryKey(clientId, periodId),
     [clientId, periodId],
   )
 
@@ -73,7 +109,18 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
     queryKey: uploadsKey,
     queryFn: () => uploadsApi.list(clientId, periodId),
     refetchOnWindowFocus: true,
+    // Poll while the API is still reading files.
+    refetchInterval: (query) =>
+      query.state.data?.some(isExtracting) ? EXTRACTION_POLL_MS : false,
   })
+  const extracting = uploadsQuery.data?.some(isExtracting) ?? false
+  const documentsQuery = useQuery({
+    queryKey: documentsKey,
+    queryFn: () => documentsApi.list(clientId, periodId),
+    refetchOnWindowFocus: true,
+    refetchInterval: extracting ? EXTRACTION_POLL_MS : false,
+  })
+  const documentsMutating = useIsMutating({ mutationKey: documentsKey }) > 0
   const runsQuery = useQuery({
     queryKey: runsKey,
     queryFn: () => runsApi.list(clientId, periodId),
@@ -84,6 +131,20 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
 
   const uploads = useMemo(() => uploadsQuery.data ?? [], [uploadsQuery.data])
   const runs = useMemo(() => runsQuery.data ?? [], [runsQuery.data])
+  const documents = useMemo(
+    () => documentsQuery.data ?? [],
+    [documentsQuery.data],
+  )
+  const summary = useMemo(() => summarizeDocuments(documents), [documents])
+
+  // The last poll may land after the documents were read: re-read them once
+  // extraction finishes.
+  const wasExtracting = useRef(false)
+  useEffect(() => {
+    if (wasExtracting.current && !extracting)
+      void queryClient.invalidateQueries({ queryKey: documentsKey })
+    wasExtracting.current = extracting
+  }, [extracting, queryClient, documentsKey])
 
   const activeRun = runs.find(isActive) ?? null
   // Snapshots of deleted documents keep a null uploadId; they block nothing.
@@ -151,6 +212,11 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
   const refetchAll = () => {
     void queryClient.invalidateQueries({ queryKey: uploadsKey })
     void queryClient.invalidateQueries({ queryKey: runsKey })
+    void queryClient.invalidateQueries({ queryKey: documentsKey })
+  }
+  const refetchFiles = () => {
+    void queryClient.invalidateQueries({ queryKey: uploadsKey })
+    void queryClient.invalidateQueries({ queryKey: documentsKey })
   }
 
   const onMutationError = (
@@ -193,7 +259,7 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
         ...(neighbour ? [deleteTriggerId(neighbour.id)] : []),
         fileInputId,
       ]
-      void queryClient.invalidateQueries({ queryKey: uploadsKey })
+      refetchFiles()
     },
     onError: (error) => onMutationError(error, 'documentDeleteError'),
     onSettled: (_data, error, uploadId) => {
@@ -201,6 +267,14 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
       if (error) restoreFocusUploadId.current = uploadId
       setConfirmingDeleteId(null)
     },
+  })
+
+  const reextractMutation = useMutation({
+    mutationFn: (uploadId: string) =>
+      uploadsApi.reextract(clientId, periodId, uploadId),
+    onMutate: () => setMutationError(null),
+    onSuccess: refetchFiles,
+    onError: (error) => onMutationError(error, 'reextractError'),
   })
 
   const downloadMutation = useMutation({
@@ -220,22 +294,37 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
   })
 
   const creatingRun = createRunMutation.isPending
-  const filesMutating = deleteUploadMutation.isPending || queue.busy
+  const filesMutating =
+    deleteUploadMutation.isPending ||
+    reextractMutation.isPending ||
+    documentsMutating ||
+    queue.busy
 
-  const generateBlockedReason: MessageKey | null =
-    uploadsQuery.isError || runsQuery.isError
-      ? 'generateBlockedUnavailable'
-      : !uploadsQuery.isSuccess || !runsQuery.isSuccess
-        ? 'generateBlockedLoading'
+  const generateBlockedReason: BlockedReason | null =
+    uploadsQuery.isError || runsQuery.isError || documentsQuery.isError
+      ? { key: 'generateBlockedUnavailable' }
+      : !uploadsQuery.isSuccess ||
+          !runsQuery.isSuccess ||
+          !documentsQuery.isSuccess
+        ? { key: 'generateBlockedLoading' }
         : activeRun
-          ? 'generateBlockedActiveRun'
+          ? { key: 'generateBlockedActiveRun' }
           : filesMutating
-            ? 'generateBlockedMutations'
+            ? { key: 'generateBlockedMutations' }
             : queue.pendingCount > 0
-              ? 'generateBlockedQueue'
+              ? { key: 'generateBlockedQueue' }
               : uploads.length === 0
-                ? 'generateBlockedNoDocuments'
-                : null
+                ? { key: 'generateBlockedNoDocuments' }
+                : extracting
+                  ? { key: 'generateBlockedExtracting' }
+                  : summary.included === 0
+                    ? { key: 'generateBlockedNoIncluded' }
+                    : summary.blockingErrors > 0
+                      ? {
+                          key: 'generateBlockedErrors',
+                          vars: { count: summary.blockingErrors },
+                        }
+                      : null
 
   return (
     <div className="space-y-8">
@@ -253,9 +342,7 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
           clientId={clientId}
           periodId={periodId}
           disabled={creatingRun}
-          onUploaded={() =>
-            queryClient.invalidateQueries({ queryKey: uploadsKey })
-          }
+          onUploaded={refetchFiles}
           onQueueStateChange={setQueue}
         />
       </Section>
@@ -350,6 +437,7 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
                       {upload.sourceFileKind}, {formatBytes(upload.sizeBytes)} ·{' '}
                       {formatDateTime(upload.createdAtUtc)}
                     </p>
+                    <ExtractionStatusLine upload={upload} />
                     <p className="mt-1 text-sm text-ink-muted">
                       {upload.includedInLatestRun
                         ? t('documentIncluded')
@@ -361,6 +449,27 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
                       </p>
                     ) : null}
                   </div>
+
+                  {upload.extractionStatus === 'Failed' &&
+                  confirmingDeleteId !== upload.id ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<RotateCw className="size-4" strokeWidth={2} />}
+                      loading={
+                        reextractMutation.isPending &&
+                        reextractMutation.variables === upload.id
+                      }
+                      loadingLabel={t('reextracting')}
+                      disabled={creatingRun || reextractMutation.isPending}
+                      aria-label={t('reextractFile', {
+                        name: upload.originalFileName,
+                      })}
+                      onClick={() => reextractMutation.mutate(upload.id)}
+                    >
+                      {t('reextract')}
+                    </Button>
+                  ) : null}
 
                   {confirmingDeleteId === upload.id ? (
                     <div className="flex flex-wrap items-center gap-2">
@@ -411,6 +520,23 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
         ) : null}
       </Section>
 
+      <Section title={t('reviewTitle')} description={t('reviewIntro')}>
+        <PeriodReview
+          clientId={clientId}
+          periodId={periodId}
+          documents={documents}
+          isLoading={documentsQuery.isLoading}
+          error={
+            documentsQuery.isError
+              ? messageOf(documentsQuery.error, t('reviewError'))
+              : null
+          }
+          onRetry={() => void documentsQuery.refetch()}
+          clientDefaults={clientDefaults}
+          disabled={creatingRun}
+        />
+      </Section>
+
       <Section
         title={t('generationsTitle')}
         description={t('generationsIntro')}
@@ -435,7 +561,7 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
         <div className="space-y-4">
           {generateBlockedReason ? (
             <p id="generate-blocked" className="text-sm text-ink-muted">
-              {t(generateBlockedReason)}
+              {t(generateBlockedReason.key, generateBlockedReason.vars)}
             </p>
           ) : null}
 
@@ -461,4 +587,49 @@ export function PeriodDocuments({ clientId, periodId }: Props) {
       </Section>
     </div>
   )
+}
+
+function ExtractionStatusLine({ upload }: { upload: Upload }) {
+  const { t } = useI18n()
+  switch (upload.extractionStatus) {
+    case 'Pending':
+      return (
+        <p className="mt-1 inline-flex items-center gap-1.5 text-sm text-ink-muted">
+          <Clock className="size-4" strokeWidth={2} aria-hidden />
+          {t('extractionPending')}
+        </p>
+      )
+    case 'Running':
+      return (
+        <p className="mt-1 inline-flex items-center gap-1.5 text-sm text-accent">
+          <Loader2
+            className="size-4 animate-spin"
+            strokeWidth={2}
+            aria-hidden
+          />
+          {t('extractionRunning')}
+        </p>
+      )
+    case 'Completed':
+      return (
+        <p className="mt-1 inline-flex items-center gap-1.5 text-sm text-success">
+          <CheckCircle2 className="size-4" strokeWidth={2} aria-hidden />
+          {upload.documentsCount === 1
+            ? t('extractionCompletedOne')
+            : t('extractionCompleted', { count: upload.documentsCount })}
+        </p>
+      )
+    case 'Failed':
+      return (
+        <div className="mt-1 text-sm text-danger">
+          <p className="inline-flex items-center gap-1.5 font-semibold">
+            <AlertCircle className="size-4" strokeWidth={2} aria-hidden />
+            {t('extractionFailed')}
+          </p>
+          {upload.extractionError ? (
+            <p className="break-words">{upload.extractionError}</p>
+          ) : null}
+        </div>
+      )
+  }
 }

@@ -1,4 +1,8 @@
+import { ClerkProvider } from '@clerk/tanstack-react-start'
+import { esES } from '@clerk/localizations'
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
+import { clerkAppearance } from '#/auth/clerk-appearance'
+import { AFTER_AUTH_PATH, SIGN_IN_PATH, SIGN_UP_PATH } from '#/auth/paths'
 import { AppProviders } from '#/components/AppProviders'
 import { AppShell } from '#/components/AppShell'
 import { ErrorView } from '#/components/ui/ErrorView'
@@ -40,9 +44,19 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <AppProviders>
-          <AppShell>{children}</AppShell>
-        </AppProviders>
+        <ClerkProvider
+          localization={esES}
+          appearance={clerkAppearance}
+          signInUrl={SIGN_IN_PATH}
+          signUpUrl={SIGN_UP_PATH}
+          signInFallbackRedirectUrl={AFTER_AUTH_PATH}
+          signUpFallbackRedirectUrl={AFTER_AUTH_PATH}
+          afterSignOutUrl={SIGN_IN_PATH}
+        >
+          <AppProviders>
+            <AppShell>{children}</AppShell>
+          </AppProviders>
+        </ClerkProvider>
         <Scripts />
       </body>
     </html>

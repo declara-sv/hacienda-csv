@@ -5,7 +5,7 @@ import type { CSSProperties, ReactNode } from 'react'
 type AuthLayoutProps = {
   title: string
   intro: string
-  footer: ReactNode
+  footer?: ReactNode
   children: ReactNode
 }
 
@@ -56,7 +56,9 @@ export function AuthLayout({
         </h1>
         <p className="mt-2 text-base text-ink-muted">{intro}</p>
         <div className="mt-8">{children}</div>
-        <p className="mt-8 text-sm text-ink-muted">{footer}</p>
+        {footer ? (
+          <p className="mt-8 text-sm text-ink-muted">{footer}</p>
+        ) : null}
       </section>
     </div>
   )
