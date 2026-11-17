@@ -24,7 +24,7 @@ import {
   filterDocuments,
   summarizeDocuments,
 } from '#/lib/dte'
-import { formatCents, formatIsoDate, formatMoney } from '#/lib/format'
+import { formatCents, formatIsoDate, formatMoney, toCents } from '#/lib/format'
 import { rentaLabel, rentaOptionLabel, useRentaCatalog } from '#/lib/renta'
 import type { ClientRentaDefaults } from './DocumentEditDialog'
 import type { AnexoFilter, StatusFilter } from '#/lib/dte'
@@ -51,6 +51,8 @@ type PeriodReviewProps = {
   clientDefaults?: ClientRentaDefaults | null
   /** Locks edits, e.g. while a generation request is in flight. */
   disabled?: boolean
+  /** Bump to show only documents with errors (the generate bar's shortcut). */
+  showErrorsSignal?: number
 }
 
 const messageOf = (error: unknown, fallback: string) =>
@@ -92,6 +94,7 @@ export function PeriodReview({
   onRetry,
   clientDefaults = null,
   disabled = false,
+  showErrorsSignal = 0,
 }: PeriodReviewProps) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
@@ -107,6 +110,12 @@ export function PeriodReview({
   const [bulkIngreso, setBulkIngreso] = useState(KEEP)
   const [mutationError, setMutationError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (showErrorsSignal === 0) return
+    setStatusFilter('Error')
+    setAnexoFilter('all')
+  }, [showErrorsSignal])
 
   const summary = useMemo(() => summarizeDocuments(documents), [documents])
   const visible = useMemo(
@@ -153,7 +162,11 @@ export function PeriodReview({
       setSuccess(null)
     },
     onSuccess: (_data, update) => {
-      setSuccess(t('bulkApplied', { count: update.documentIds.length }))
+      setSuccess(
+        update.documentIds.length === 1
+          ? t('bulkAppliedOne')
+          : t('bulkApplied', { count: update.documentIds.length }),
+      )
       setSelected(new Set())
       setBulkOperacion(KEEP)
       setBulkIngreso(KEEP)
@@ -329,9 +342,9 @@ export function PeriodReview({
           {selected.size > 0 ? (
             <section
               aria-label={t('bulkLabel')}
-              className="flex flex-wrap items-end gap-3 rounded-container border border-accent bg-accent-soft/40 p-4"
+              className="z-[9] flex sm:sticky sm:top-36 flex-wrap items-center gap-2 rounded-control border border-accent bg-accent-soft px-3 py-2 shadow-raised"
             >
-              <p className="w-full text-sm font-semibold text-ink">
+              <p className="mr-1 text-sm font-semibold text-ink">
                 {t('bulkSelected', { count: selected.size })}
               </p>
               <BulkRentaSelect
@@ -351,6 +364,7 @@ export function PeriodReview({
                 disabled={busy}
               />
               <Button
+                size="sm"
                 onClick={applyBulkCodes}
                 disabled={
                   busy || (bulkOperacion === KEEP && bulkIngreso === KEEP)
@@ -362,6 +376,7 @@ export function PeriodReview({
               </Button>
               <Button
                 variant="secondary"
+                size="sm"
                 disabled={busy}
                 onClick={() =>
                   bulkMutation.mutate({
@@ -374,6 +389,7 @@ export function PeriodReview({
               </Button>
               <Button
                 variant="secondary"
+                size="sm"
                 disabled={busy}
                 onClick={() =>
                   bulkMutation.mutate({
@@ -386,6 +402,8 @@ export function PeriodReview({
               </Button>
               <Button
                 variant="ghost"
+                size="sm"
+                className="sm:ml-auto"
                 disabled={bulkMutation.isPending}
                 onClick={() => setSelected(new Set())}
               >
@@ -394,8 +412,10 @@ export function PeriodReview({
             </section>
           ) : null}
 
-          <div className="overflow-x-auto rounded-container border border-line bg-surface-raised">
-            <table className="w-full min-w-[96rem] border-collapse text-left text-sm">
+          {/* relative: the sr-only labels inside must not escape the scroll box
+              and widen the whole page. */}
+          <div className="relative overflow-x-auto rounded-container border border-line bg-surface-raised">
+            <table className="w-full min-w-[60rem] border-collapse text-left text-sm">
               <caption className="sr-only">{t('reviewTableCaption')}</caption>
               <thead className="border-b border-line bg-surface-sunken/60 text-xs font-semibold uppercase tracking-wide text-ink-muted">
                 <tr>
@@ -417,34 +437,16 @@ export function PeriodReview({
                     {t('colTipo')}
                   </th>
                   <th scope="col" className="px-3 py-2.5">
-                    {t('colAnexo')}
-                  </th>
-                  <th scope="col" className="px-3 py-2.5">
                     {t('colCodigoGeneracion')}
                   </th>
                   <th scope="col" className="px-3 py-2.5">
                     {t('colReceptor')}
                   </th>
                   <th scope="col" className="px-3 py-2.5 text-right">
-                    {t('fieldExentas')}
-                  </th>
-                  <th scope="col" className="px-3 py-2.5 text-right">
-                    {t('fieldNoSujetas')}
-                  </th>
-                  <th scope="col" className="px-3 py-2.5 text-right">
-                    {t('fieldGravadas')}
-                  </th>
-                  <th scope="col" className="px-3 py-2.5 text-right">
-                    {t('fieldIva')}
-                  </th>
-                  <th scope="col" className="px-3 py-2.5 text-right">
-                    {t('fieldTotal')}
+                    {t('colMontos')}
                   </th>
                   <th scope="col" className="px-3 py-2.5">
-                    {t('fieldTipoOperacion')}
-                  </th>
-                  <th scope="col" className="px-3 py-2.5">
-                    {t('fieldTipoIngreso')}
+                    {t('colRenta')}
                   </th>
                   <th scope="col" className="px-3 py-2.5">
                     {t('colEstado')}
@@ -551,12 +553,13 @@ function BulkRentaSelect({
 }) {
   const { t } = useI18n()
   return (
-    <div className="flex min-w-60 flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-semibold text-ink">
+    <div className="flex items-center gap-2">
+      <label htmlFor={id} className="shrink-0 text-sm text-ink">
         {label}
       </label>
       <Select
         id={id}
+        controlSize="sm"
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
@@ -598,9 +601,13 @@ function DocumentRow({
 }: DocumentRowProps) {
   const { t } = useI18n()
   const reference = documentReference(document)
-  const money = (value: string) => (
-    <td className="px-3 py-3 text-right tabular-nums">{formatMoney(value)}</td>
-  )
+  // Total first; the parts only when they carry a value.
+  const parts = [
+    { key: 'grav', label: t('fieldGravadas'), value: document.totalGravadas },
+    { key: 'ex', label: t('fieldExentas'), value: document.totalExentas },
+    { key: 'ns', label: t('fieldNoSujetas'), value: document.totalNoSujetas },
+    { key: 'iva', label: t('fieldIva'), value: document.iva },
+  ].filter((part) => toCents(part.value) !== 0)
 
   return (
     <tr
@@ -610,7 +617,7 @@ function DocumentRow({
         document.excluded && 'text-ink-muted',
       )}
     >
-      <td className="px-3 py-3">
+      <td className="px-3 py-2.5">
         <input
           type="checkbox"
           className="size-4 accent-[var(--accent)]"
@@ -619,7 +626,7 @@ function DocumentRow({
           aria-label={t('reviewSelectDocument', { reference })}
         />
       </td>
-      <td className="whitespace-nowrap px-3 py-3 tabular-nums">
+      <td className="whitespace-nowrap px-3 py-2.5 tabular-nums">
         {formatIsoDate(document.fechaEmision) || '—'}
         {document.horaEmision ? (
           <span className="block text-xs text-ink-muted">
@@ -627,64 +634,70 @@ function DocumentRow({
           </span>
         ) : null}
       </td>
-      <td className="px-3 py-3">
+      <td className="px-3 py-2.5">
         <span className="whitespace-nowrap font-semibold">
           {dteTypeLabel(document.tipoDte)}
         </span>
+        <span className="block whitespace-nowrap text-xs text-ink-muted">
+          {document.anexo ? (
+            t('anexoLabel', { anexo: document.anexo })
+          ) : (
+            <span title={t('anexoNoneHint')}>{t('anexoNone')}</span>
+          )}
+        </span>
         <span
-          className="block max-w-40 truncate text-xs text-ink-muted"
+          className="block max-w-36 truncate text-xs text-ink-muted"
           title={document.originalFileName}
         >
           {document.originalFileName}
         </span>
       </td>
-      <td className="whitespace-nowrap px-3 py-3">
-        {document.anexo ? (
-          t('anexoLabel', { anexo: document.anexo })
-        ) : (
-          <span className="text-ink-muted" title={t('anexoNoneHint')}>
-            {t('anexoNone')}
-          </span>
-        )}
-      </td>
-      <td className="px-3 py-3">
+      <td className="px-3 py-2.5">
         {document.codigoGeneracion ? (
           <CopyableCode value={document.codigoGeneracion} />
         ) : (
           <span className="text-ink-muted">—</span>
         )}
       </td>
-      <td className="px-3 py-3">
-        <span className="block max-w-56 break-words">
+      <td className="px-3 py-2.5">
+        <span className="block max-w-44 break-words">
           {document.receptorNombre ?? '—'}
         </span>
         <ReceptorIds document={document} />
       </td>
-      {money(document.totalExentas)}
-      {money(document.totalNoSujetas)}
-      {money(document.totalGravadas)}
-      {money(document.iva)}
-      <td className="px-3 py-3 text-right font-semibold tabular-nums">
-        {formatMoney(document.total)}
+      <td className="px-3 py-2.5 text-right">
+        <span className="block whitespace-nowrap font-semibold tabular-nums">
+          {formatMoney(document.total)}
+        </span>
+        {parts.map((part) => (
+          <span
+            key={part.key}
+            className="block whitespace-nowrap text-xs text-ink-muted tabular-nums"
+          >
+            {part.label} {formatMoney(part.value)}
+          </span>
+        ))}
       </td>
-      <td className="px-3 py-3">
-        <RentaCell
-          code={document.effectiveTipoOperacion}
-          overridden={document.tipoOperacionRenta !== null}
-          entries={operacionEntries}
-        />
+      <td className="px-3 py-2.5">
+        <span className="flex flex-col gap-1">
+          <RentaCell
+            prefix={t('rentaOperacionShort')}
+            code={document.effectiveTipoOperacion}
+            overridden={document.tipoOperacionRenta !== null}
+            entries={operacionEntries}
+          />
+          <RentaCell
+            prefix={t('rentaIngresoShort')}
+            code={document.effectiveTipoIngreso}
+            overridden={document.tipoIngresoRenta !== null}
+            entries={ingresoEntries}
+          />
+        </span>
       </td>
-      <td className="px-3 py-3">
-        <RentaCell
-          code={document.effectiveTipoIngreso}
-          overridden={document.tipoIngresoRenta !== null}
-          entries={ingresoEntries}
-        />
-      </td>
-      <td className="px-3 py-3">
+      <td className="px-3 py-2.5">
         <IssuesCell document={document} />
       </td>
-      <td className="px-3 py-3">
+      <td className="px-3 py-2.5">
         <label className="inline-flex items-center gap-2">
           <input
             type="checkbox"
@@ -700,7 +713,7 @@ function DocumentRow({
           </span>
         </label>
       </td>
-      <td className="px-3 py-3">
+      <td className="px-2 py-2">
         <Button
           id={editTriggerId(document.id)}
           variant="ghost"
@@ -708,10 +721,9 @@ function DocumentRow({
           icon={<Pencil className="size-4" strokeWidth={2} />}
           disabled={disabled}
           aria-label={t('reviewEditDocument', { reference })}
+          title={t('edit')}
           onClick={onEdit}
-        >
-          {t('edit')}
-        </Button>
+        />
       </td>
     </tr>
   )
@@ -774,10 +786,12 @@ function CopyableCode({ value }: { value: string }) {
 }
 
 function RentaCell({
+  prefix,
   code,
   overridden,
   entries,
 }: {
+  prefix: string
   code: string | null
   overridden: boolean
   entries: readonly RentaCatalogEntry[] | undefined
@@ -785,18 +799,23 @@ function RentaCell({
   const { t } = useI18n()
   if (!code) {
     return (
-      <span className="whitespace-nowrap font-semibold text-danger">
-        {t('rentaMissing')}
+      <span className="whitespace-nowrap text-xs">
+        <span className="text-ink-muted">{prefix} </span>
+        <span className="font-semibold text-danger">{t('rentaMissing')}</span>
       </span>
     )
   }
   const label = rentaLabel(entries, code)
   return (
-    <span className="flex flex-col items-start gap-1" title={label}>
-      <span className="font-semibold tabular-nums">{code}</span>
+    <span
+      className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs"
+      title={label}
+    >
+      <span className="text-ink-muted">{prefix}</span>
+      <span className="font-semibold tabular-nums text-ink">{code}</span>
       <span
         className={cn(
-          'rounded-full px-2 py-0.5 text-xs font-semibold',
+          'rounded-full px-1.5 py-px text-[11px] font-semibold',
           overridden
             ? 'bg-accent-soft text-accent'
             : 'bg-surface-sunken text-ink-muted',
@@ -843,13 +862,22 @@ function IssuesCell({ document }: { document: DocumentDto }) {
     )
   }
   return (
-    <details className="max-w-72">
+    <details className="group max-w-56">
       <summary
         className="cursor-pointer list-none"
         title={document.issues.map((issue) => issue.message).join('\n')}
       >
         {chip}
         <span className="sr-only">{t('reviewShowIssues')}</span>
+        <span
+          className={cn(
+            'mt-1 line-clamp-2 text-xs group-open:hidden',
+            document.status === 'Error' ? 'text-danger' : 'text-warning',
+          )}
+          aria-hidden
+        >
+          {document.issues[0]?.message}
+        </span>
       </summary>
       <ul className="mt-2 space-y-1.5">
         {document.issues.map((issue, index) => (

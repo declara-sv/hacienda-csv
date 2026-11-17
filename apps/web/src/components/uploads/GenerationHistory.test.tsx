@@ -67,8 +67,8 @@ describe('GenerationHistory', () => {
     expect(
       items.map((item) => within(item).getByRole('heading').textContent),
     ).toEqual(['Versión 3', 'Versión 2', 'Versión 1'])
-    expect(within(items[1]).getByText('Último CSV generado')).toBeTruthy()
-    expect(within(items[0]).queryByText('Último CSV generado')).toBeNull()
+    expect(within(items[1]).getByText('Vigente')).toBeTruthy()
+    expect(within(items[0]).queryByText('Vigente')).toBeNull()
     expect(screen.getByText('No se pudo generar')).toBeTruthy()
     expect(runs.map((item) => item.version)).toEqual([1, 3, 2])
   })
@@ -104,14 +104,14 @@ describe('GenerationHistory', () => {
     })
     const warning = screen.getByRole('alert')
     expect(warning.textContent).toContain(
-      '1 archivo(s) no se incluyeron en este CSV',
+      '1 archivo(s) no entraron en esta versión',
     )
     expect(warning.closest('details')).toBeNull()
     const details = screen
-      .getByText('Archivos de esta versión (1)')
+      .getByText('PDF usados en esta versión (1)')
       .closest('details')!
     expect(details.open).toBe(false)
-    fireEvent.click(within(details).getByText('Archivos de esta versión (1)'))
+    fireEvent.click(within(details).getByText('PDF usados en esta versión (1)'))
     expect(details.open).toBe(true)
     expect(within(details).getByText('PDF ilegible')).toBeTruthy()
   })
@@ -131,7 +131,7 @@ describe('GenerationHistory', () => {
       ],
     })
     const details = screen
-      .getByText('Archivos de esta versión (3)')
+      .getByText('PDF usados en esta versión (3)')
       .closest('details')!
     expect(within(details).getAllByText('duplicate.pdf')).toHaveLength(3)
     for (const status of ['Pendiente', 'Incluido', 'Fallido'])
@@ -142,11 +142,15 @@ describe('GenerationHistory', () => {
   it('renders an accessible loading state without empty text', () => {
     show({ isLoading: true })
     expect(screen.getByRole('status').textContent).toContain('Cargando')
-    expect(screen.queryByText('Todavía no has generado un CSV.')).toBeNull()
+    expect(
+      screen.queryByText('Todavía no has generado los anexos de este período.'),
+    ).toBeNull()
   })
   it('renders an empty state', () => {
     show()
-    expect(screen.getByText('Todavía no has generado un CSV.')).toBeTruthy()
+    expect(
+      screen.getByText('Todavía no has generado los anexos de este período.'),
+    ).toBeTruthy()
   })
   it('renders load errors with retry, without claiming the history is empty', () => {
     const onRetry = vi.fn()
@@ -154,7 +158,9 @@ describe('GenerationHistory', () => {
     expect(screen.getByRole('alert').textContent).toContain(
       'Servicio no disponible',
     )
-    expect(screen.queryByText('Todavía no has generado un CSV.')).toBeNull()
+    expect(
+      screen.queryByText('Todavía no has generado los anexos de este período.'),
+    ).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
     expect(onRetry).toHaveBeenCalledOnce()
   })
@@ -224,10 +230,10 @@ describe('GenerationHistory', () => {
     expect(screen.getByText(/1 fila$/)).toBeTruthy()
     expect(
       screen.getByRole('button', {
-        name: 'Descargar CSV: anexo2_202510.csv',
+        name: 'Descargar anexo2_202510.csv',
       }),
     ).toBeTruthy()
     // Runs without file snapshots no longer show an empty file list.
-    expect(screen.queryByText('Archivos de esta versión (0)')).toBeNull()
+    expect(screen.queryByText('PDF usados en esta versión (0)')).toBeNull()
   })
 })

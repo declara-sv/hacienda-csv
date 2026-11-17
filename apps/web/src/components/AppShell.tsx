@@ -19,7 +19,9 @@ function AccountName() {
     staleTime: 5 * 60 * 1000,
   })
 
-  if (!data) return null
+  // Without a name claim the account is named after the email; the avatar
+  // menu already shows that, so the header stays quiet.
+  if (!data || data.account.name === data.user.email) return null
 
   return (
     <span
@@ -38,12 +40,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-10 border-b border-line bg-surface-raised">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-          <Link to="/" className="flex flex-col leading-none">
-            <span className="font-title text-xl tracking-wide text-ink sm:text-2xl">
-              {t('appName')}
+          <Link
+            to="/"
+            className="flex items-center gap-2.5 rounded-control"
+            aria-label={t('appName')}
+          >
+            <span
+              className="inline-flex size-8 items-center justify-center rounded-control bg-accent font-title text-lg font-semibold text-accent-ink"
+              aria-hidden
+            >
+              A
             </span>
-            <span className="hidden text-[11px] uppercase tracking-[0.24em] text-accent sm:block">
-              {t('appSubtitle')}
+            <span
+              className="font-title text-xl font-semibold text-ink"
+              aria-hidden
+            >
+              Anexos<span className="text-accent">Fácil</span>
             </span>
           </Link>
 

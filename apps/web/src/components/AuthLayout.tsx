@@ -3,18 +3,12 @@ import { useI18n } from '#/i18n/I18nProvider'
 import type { CSSProperties, ReactNode } from 'react'
 
 type AuthLayoutProps = {
-  title: string
-  intro: string
   footer?: ReactNode
   children: ReactNode
 }
 
-export function AuthLayout({
-  title,
-  intro,
-  footer,
-  children,
-}: AuthLayoutProps) {
+/** Clerk's card carries the page title (an h1), so the layout adds none. */
+export function AuthLayout({ footer, children }: AuthLayoutProps) {
   const { t } = useI18n()
 
   const points = [
@@ -26,7 +20,7 @@ export function AuthLayout({
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start lg:gap-16">
       <aside className="rise hidden rounded-container bg-accent p-8 text-accent-ink lg:sticky lg:top-24 lg:block xl:p-10">
-        <p className="font-title text-3xl leading-tight xl:text-4xl">
+        <p className="font-title text-3xl leading-tight">
           {t('authPanelTitle')}
         </p>
         <p className="mt-4 max-w-[38ch] text-base leading-relaxed text-accent-ink/85">
@@ -51,11 +45,7 @@ export function AuthLayout({
         className="rise w-full max-w-md lg:pt-2"
         style={{ '--i': 1 } as CSSProperties}
       >
-        <h1 className="font-title text-3xl leading-tight text-ink md:text-4xl">
-          {title}
-        </h1>
-        <p className="mt-2 text-base text-ink-muted">{intro}</p>
-        <div className="mt-8">{children}</div>
+        {children}
         {footer ? (
           <p className="mt-8 text-sm text-ink-muted">{footer}</p>
         ) : null}

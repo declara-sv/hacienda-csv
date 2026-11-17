@@ -8,7 +8,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  FileSpreadsheet,
   FileText,
   Inbox,
   Loader2,
@@ -32,6 +31,7 @@ import { RowListSkeleton } from '#/components/ui/Skeleton'
 import { useI18n } from '#/i18n/I18nProvider'
 import { ApiError, documentsApi, runsApi, uploadsApi } from '#/lib/api-client'
 import { summarizeDocuments } from '#/lib/dte'
+import { cn } from '#/lib/cn'
 import { formatBytes, formatDateTime } from '#/lib/format'
 import type { UploadQueueState } from './MultiFileUpload'
 import type { MessageKey } from '#/i18n/messages'
@@ -53,6 +53,9 @@ const isExtracting = (upload: Upload) =>
   upload.extractionStatus === 'Pending' || upload.extractionStatus === 'Running'
 
 const EXTRACTION_POLL_MS = 3000
+/** Above this many read files, they fold behind a toggle. */
+const READ_FILES_FOLD_AT = 5
+const reviewSectionId = 'revision'
 
 type BlockedReason = { key: MessageKey; vars?: Record<string, number> }
 
@@ -326,18 +329,182 @@ export function PeriodDocuments({
                         }
                       : null
 
+  const failedUploads = uploads.filter(
+    (upload) => upload.extractionStatus === 'Failed',
+  ).length
+  const extractingUploads = uploads.filter(isExtracting).length
+  const latestCompletedRun =
+    runs.find((run) => run.id === latestCompletedRunId) ?? null
+
+  // Files that need attention stay in view; read ones fold away in long months.
+  const [showRead, setShowRead] = useState(false)
+  const readUploads = uploads.filter(
+    (upload) => upload.extractionStatus === 'Completed',
+  )
+  const foldRead = readUploads.length > READ_FILES_FOLD_AT && !showRead
+  const listedUploads = foldRead
+    ? uploads.filter((upload) => upload.extractionStatus !== 'Completed')
+    : uploads
+
+  const [showErrorsSignal, setShowErrorsSignal] = useState(0)
+  const showErrors = () => {
+    setShowErrorsSignal((value) => value + 1)
+    const target = document.getElementById(reviewSectionId)
+    // jsdom has no scrollIntoView.
+    if (target && 'scrollIntoView' in target)
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const readyMessage =
+    summary.included === 1
+      ? t('generateReadyOne')
+      : t('generateReady', { count: summary.included })
+  const blockedMessage = generateBlockedReason
+    ? generateBlockedReason.key === 'generateBlockedErrors' &&
+      summary.blockingErrors === 1
+      ? t('generateBlockedErrorsOne')
+      : t(generateBlockedReason.key, generateBlockedReason.vars)
+    : null
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {mutationError ? (
         <Notice variant="error" onDismiss={() => setMutationError(null)}>
           {mutationError}
         </Notice>
       ) : null}
 
-      <Section
-        title={t('uploadDocumentsTitle')}
-        description={t('uploadDocumentsIntro')}
+      <dl
+        className="grid gap-3 sm:grid-cols-3"
+        aria-label={t('periodStatusLabel')}
       >
+        <StatusTile
+          label={t('periodStepFiles')}
+          value={
+            uploads.length === 0
+              ? t('periodFilesNone')
+              : uploads.length === 1
+                ? t('periodFilesCountOne')
+                : t('periodFilesCount', { count: uploads.length })
+          }
+          detail={
+            failedUploads > 0
+              ? failedUploads === 1
+                ? t('periodFilesFailedOne')
+                : t('periodFilesFailed', { count: failedUploads })
+              : extractingUploads > 0
+                ? t('periodFilesReading', { count: extractingUploads })
+                : uploads.length > 0
+                  ? t('periodFilesAllRead')
+                  : null
+          }
+          tone={failedUploads > 0 ? 'warning' : 'default'}
+        />
+        <StatusTile
+          label={t('periodStepReview')}
+          value={
+            documents.length === 1
+              ? t('periodReviewCountOne')
+              : t('periodReviewCount', { count: documents.length })
+          }
+          detail={
+            documents.length === 0
+              ? null
+              : summary.blockingErrors > 0
+                ? summary.blockingErrors === 1
+                  ? t('periodReviewErrorsOne')
+                  : t('periodReviewErrors', { count: summary.blockingErrors })
+                : summary.warnings > 0
+                  ? t('periodReviewWarnings', { count: summary.warnings })
+                  : t('periodReviewClean')
+          }
+          tone={summary.blockingErrors > 0 ? 'danger' : 'default'}
+        />
+        <StatusTile
+          label={t('periodStepAnexos')}
+          value={
+            latestCompletedRun
+              ? t('periodAnexosVersion', {
+                  version: latestCompletedRun.version,
+                })
+              : t('periodAnexosNone')
+          }
+          detail={
+            activeRun
+              ? t('periodAnexosRunning', { version: activeRun.version })
+              : latestCompletedRun?.completedAtUtc
+                ? formatDateTime(latestCompletedRun.completedAtUtc)
+                : null
+          }
+        />
+      </dl>
+
+      <section
+        aria-label={t('periodGenerateLabel')}
+        className={cn(
+          'z-10 flex flex-col sm:sticky sm:top-16 gap-3 rounded-container border bg-surface-raised px-4 py-3 text-ink shadow-raised sm:flex-row sm:items-center sm:justify-between',
+          generateBlockedReason ? 'border-line-strong' : 'border-accent',
+        )}
+      >
+        <div className="min-w-0 text-sm" aria-live="polite">
+          <p id="generate-blocked" className="font-semibold">
+            {blockedMessage ?? readyMessage}
+          </p>
+          {failedUploads > 0 ? (
+            <p className="text-warning">
+              {failedUploads === 1
+                ? t('generateFailedFilesOne')
+                : t('generateFailedFiles', { count: failedUploads })}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          {summary.blockingErrors > 0 ? (
+            <button
+              type="button"
+              className="rounded-control px-1 text-sm font-semibold text-accent underline underline-offset-2"
+              onClick={showErrors}
+            >
+              {t('generateShowErrors')}
+            </button>
+          ) : null}
+          <Button
+            icon={<Sparkles className="size-4" strokeWidth={2} />}
+            loading={creatingRun}
+            loadingLabel={t('generating')}
+            disabled={generateBlockedReason !== null}
+            aria-describedby="generate-blocked"
+            onClick={() => {
+              // Guard the same tick: the disabled state lands one render later.
+              if (!createRunMutation.isPending) createRunMutation.mutate()
+            }}
+          >
+            {t('generateCsv')}
+          </Button>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="period-files-heading"
+        className="space-y-3 rounded-container border border-line bg-surface-raised p-4"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h2
+            id="period-files-heading"
+            className="text-lg font-semibold text-ink"
+          >
+            {t('documentsTitle')}
+          </h2>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<RefreshCw className="size-4" strokeWidth={2} />}
+            onClick={refetchAll}
+          >
+            {t('refresh')}
+          </Button>
+        </div>
+
         <MultiFileUpload
           clientId={clientId}
           periodId={periodId}
@@ -345,21 +512,7 @@ export function PeriodDocuments({
           onUploaded={refetchFiles}
           onQueueStateChange={setQueue}
         />
-      </Section>
 
-      <Section
-        title={t('documentsTitle')}
-        actions={
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<RefreshCw className="size-4" strokeWidth={2} />}
-            onClick={refetchAll}
-          >
-            {t('refresh')}
-          </Button>
-        }
-      >
         {uploadsQuery.isLoading ? (
           <div role="status">
             <span className="sr-only">{t('documentsLoading')}</span>
@@ -390,12 +543,12 @@ export function PeriodDocuments({
           />
         ) : null}
 
-        {uploads.length > 0 ? (
+        {listedUploads.length > 0 ? (
           <ul
-            className="divide-y divide-line"
+            className="divide-y divide-line rounded-control border border-line"
             aria-label={t('uploadsListLabel')}
           >
-            {uploads.map((upload, index) => {
+            {listedUploads.map((upload, index) => {
               const lockedByActiveRun = idsInActiveRuns.has(upload.id)
               const deleting =
                 deleteUploadMutation.isPending &&
@@ -410,117 +563,132 @@ export function PeriodDocuments({
               return (
                 <li
                   key={upload.id}
-                  className="rise flex flex-wrap items-start gap-4 py-5 first:pt-0"
-                  style={{ '--i': index } as CSSProperties}
+                  className="rise flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-start sm:gap-4"
+                  style={{ '--i': Math.min(index, 8) } as CSSProperties}
                 >
-                  <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-control bg-accent-soft text-accent">
-                    {upload.sourceFileKind === 'PDF' ? (
-                      <FileText
-                        className="size-5"
-                        strokeWidth={1.75}
-                        aria-hidden
-                      />
-                    ) : (
-                      <FileSpreadsheet
-                        className="size-5"
-                        strokeWidth={1.75}
-                        aria-hidden
-                      />
-                    )}
-                  </span>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-ink">
-                      {upload.originalFileName}
-                    </p>
-                    <p className="text-sm text-ink-muted">
-                      {upload.sourceFileKind}, {formatBytes(upload.sizeBytes)} ·{' '}
-                      {formatDateTime(upload.createdAtUtc)}
-                    </p>
-                    <ExtractionStatusLine upload={upload} />
-                    <p className="mt-1 text-sm text-ink-muted">
-                      {upload.includedInLatestRun
-                        ? t('documentIncluded')
-                        : t('documentNotIncluded')}
-                    </p>
-                    {lockedByActiveRun ? (
-                      <p className="mt-1 text-xs text-ink-muted">
-                        {t('documentDeleteBlocked')}
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <FileText
+                      className="mt-0.5 size-4 shrink-0 text-ink-muted"
+                      strokeWidth={1.75}
+                      aria-hidden
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-ink">
+                        {upload.originalFileName}
+                        <span className="font-normal text-ink-muted">
+                          {' · '}
+                          {formatBytes(upload.sizeBytes)} ·{' '}
+                          {formatDateTime(upload.createdAtUtc)}
+                        </span>
                       </p>
-                    ) : null}
+                      <ExtractionStatusLine upload={upload} />
+                      {latestCompletedRunId ? (
+                        <p className="text-xs text-ink-muted">
+                          {upload.includedInLatestRun
+                            ? t('documentIncluded')
+                            : t('documentNotIncluded')}
+                        </p>
+                      ) : null}
+                      {lockedByActiveRun ? (
+                        <p className="text-xs text-ink-muted">
+                          {t('documentDeleteBlocked')}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
 
-                  {upload.extractionStatus === 'Failed' &&
-                  confirmingDeleteId !== upload.id ? (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon={<RotateCw className="size-4" strokeWidth={2} />}
-                      loading={
-                        reextractMutation.isPending &&
-                        reextractMutation.variables === upload.id
-                      }
-                      loadingLabel={t('reextracting')}
-                      disabled={creatingRun || reextractMutation.isPending}
-                      aria-label={t('reextractFile', {
-                        name: upload.originalFileName,
-                      })}
-                      onClick={() => reextractMutation.mutate(upload.id)}
-                    >
-                      {t('reextract')}
-                    </Button>
-                  ) : null}
-
-                  {confirmingDeleteId === upload.id ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm text-ink">
-                        {t('documentDeleteQuestion')}
-                      </span>
+                  <div className="flex flex-wrap items-center gap-1 pl-7 sm:pl-0">
+                    {upload.extractionStatus === 'Failed' &&
+                    confirmingDeleteId !== upload.id ? (
                       <Button
-                        id={confirmDeleteId(upload.id)}
                         variant="secondary"
                         size="sm"
-                        loading={deleting}
-                        disabled={deleteBlocked}
-                        onClick={() => deleteUploadMutation.mutate(upload.id)}
+                        icon={<RotateCw className="size-4" strokeWidth={2} />}
+                        loading={
+                          reextractMutation.isPending &&
+                          reextractMutation.variables === upload.id
+                        }
+                        loadingLabel={t('reextracting')}
+                        disabled={creatingRun || reextractMutation.isPending}
+                        aria-label={t('reextractFile', {
+                          name: upload.originalFileName,
+                        })}
+                        onClick={() => reextractMutation.mutate(upload.id)}
                       >
-                        {t('documentDeleteConfirm')}
+                        {t('reextract')}
                       </Button>
+                    ) : null}
+
+                    {confirmingDeleteId === upload.id ? (
+                      <>
+                        <span className="text-sm text-ink">
+                          {t('documentDeleteQuestion')}
+                        </span>
+                        <Button
+                          id={confirmDeleteId(upload.id)}
+                          variant="secondary"
+                          size="sm"
+                          loading={deleting}
+                          disabled={deleteBlocked}
+                          onClick={() => deleteUploadMutation.mutate(upload.id)}
+                        >
+                          {t('documentDeleteConfirm')}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={deleting}
+                          onClick={() => {
+                            restoreFocusUploadId.current = upload.id
+                            setConfirmingDeleteId(null)
+                          }}
+                        >
+                          {t('cancel')}
+                        </Button>
+                      </>
+                    ) : (
                       <Button
+                        id={deleteTriggerId(upload.id)}
                         variant="ghost"
                         size="sm"
-                        disabled={deleting}
-                        onClick={() => {
-                          restoreFocusUploadId.current = upload.id
-                          setConfirmingDeleteId(null)
-                        }}
+                        icon={<Trash2 className="size-4" strokeWidth={2} />}
+                        disabled={deleteBlocked}
+                        aria-label={t('documentDelete', {
+                          name: upload.originalFileName,
+                        })}
+                        onClick={() => setConfirmingDeleteId(upload.id)}
                       >
-                        {t('cancel')}
+                        {t('delete')}
                       </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      id={deleteTriggerId(upload.id)}
-                      variant="ghost"
-                      size="sm"
-                      icon={<Trash2 className="size-4" strokeWidth={2} />}
-                      disabled={deleteBlocked}
-                      aria-label={t('documentDelete', {
-                        name: upload.originalFileName,
-                      })}
-                      onClick={() => setConfirmingDeleteId(upload.id)}
-                    >
-                      {t('delete')}
-                    </Button>
-                  )}
+                    )}
+                  </div>
                 </li>
               )
             })}
           </ul>
         ) : null}
-      </Section>
 
-      <Section title={t('reviewTitle')} description={t('reviewIntro')}>
+        {readUploads.length > READ_FILES_FOLD_AT ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-expanded={!foldRead}
+            onClick={() => setShowRead((value) => !value)}
+          >
+            {!foldRead
+              ? t('filesHideRead')
+              : readUploads.length === 1
+                ? t('filesShowReadOne')
+                : t('filesShowRead', { count: readUploads.length })}
+          </Button>
+        ) : null}
+      </section>
+
+      <Section
+        id={reviewSectionId}
+        title={t('reviewTitle')}
+        description={t('reviewIntro')}
+      >
         <PeriodReview
           clientId={clientId}
           periodId={periodId}
@@ -534,37 +702,15 @@ export function PeriodDocuments({
           onRetry={() => void documentsQuery.refetch()}
           clientDefaults={clientDefaults}
           disabled={creatingRun}
+          showErrorsSignal={showErrorsSignal}
         />
       </Section>
 
       <Section
         title={t('generationsTitle')}
         description={t('generationsIntro')}
-        actions={
-          <Button
-            icon={<Sparkles className="size-4" strokeWidth={2} />}
-            loading={creatingRun}
-            loadingLabel={t('generating')}
-            disabled={generateBlockedReason !== null}
-            aria-describedby={
-              generateBlockedReason ? 'generate-blocked' : undefined
-            }
-            onClick={() => {
-              // Guard the same tick: the disabled state lands one render later.
-              if (!createRunMutation.isPending) createRunMutation.mutate()
-            }}
-          >
-            {t('generateCsv')}
-          </Button>
-        }
       >
         <div className="space-y-4">
-          {generateBlockedReason ? (
-            <p id="generate-blocked" className="text-sm text-ink-muted">
-              {t(generateBlockedReason.key, generateBlockedReason.vars)}
-            </p>
-          ) : null}
-
           {downloadError ? (
             <Notice variant="error" onDismiss={() => setDownloadError(null)}>
               {downloadError}
@@ -589,19 +735,56 @@ export function PeriodDocuments({
   )
 }
 
+function StatusTile({
+  label,
+  value,
+  detail,
+  tone = 'default',
+}: {
+  label: string
+  value: string
+  detail: string | null
+  tone?: 'default' | 'warning' | 'danger'
+}) {
+  return (
+    <div className="rounded-container border border-line bg-surface-raised px-4 py-3">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        {label}
+      </dt>
+      <dd className="mt-0.5 text-lg font-semibold text-ink tabular-nums">
+        {value}
+      </dd>
+      {detail ? (
+        <dd
+          className={cn(
+            'text-sm',
+            tone === 'danger'
+              ? 'font-semibold text-danger'
+              : tone === 'warning'
+                ? 'font-semibold text-warning'
+                : 'text-ink-muted',
+          )}
+        >
+          {detail}
+        </dd>
+      ) : null}
+    </div>
+  )
+}
+
 function ExtractionStatusLine({ upload }: { upload: Upload }) {
   const { t } = useI18n()
   switch (upload.extractionStatus) {
     case 'Pending':
       return (
-        <p className="mt-1 inline-flex items-center gap-1.5 text-sm text-ink-muted">
+        <p className="inline-flex items-center gap-1.5 text-sm text-ink-muted">
           <Clock className="size-4" strokeWidth={2} aria-hidden />
           {t('extractionPending')}
         </p>
       )
     case 'Running':
       return (
-        <p className="mt-1 inline-flex items-center gap-1.5 text-sm text-accent">
+        <p className="inline-flex items-center gap-1.5 text-sm text-accent">
           <Loader2
             className="size-4 animate-spin"
             strokeWidth={2}
@@ -612,7 +795,7 @@ function ExtractionStatusLine({ upload }: { upload: Upload }) {
       )
     case 'Completed':
       return (
-        <p className="mt-1 inline-flex items-center gap-1.5 text-sm text-success">
+        <p className="inline-flex items-center gap-1.5 text-sm text-success">
           <CheckCircle2 className="size-4" strokeWidth={2} aria-hidden />
           {upload.documentsCount === 1
             ? t('extractionCompletedOne')
@@ -621,7 +804,7 @@ function ExtractionStatusLine({ upload }: { upload: Upload }) {
       )
     case 'Failed':
       return (
-        <div className="mt-1 text-sm text-danger">
+        <div className="text-sm text-danger">
           <p className="inline-flex items-center gap-1.5 font-semibold">
             <AlertCircle className="size-4" strokeWidth={2} aria-hidden />
             {t('extractionFailed')}

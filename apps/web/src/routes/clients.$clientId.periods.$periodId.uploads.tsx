@@ -12,7 +12,7 @@ import { formatPeriod } from '#/lib/format'
 export const Route = createFileRoute(
   '/clients/$clientId/periods/$periodId/uploads',
 )({
-  head: () => ({ meta: [{ title: 'Carga de documentos | HaciendaCSV' }] }),
+  head: () => ({ meta: [{ title: 'Período | AnexosFácil' }] }),
   component: UploadsPage,
 })
 
@@ -43,9 +43,25 @@ function UploadsPage() {
       />
 
       <PageHeader
-        title={t('uploadsTitle')}
-        meta={periodLabel ? <span>{periodLabel}</span> : undefined}
-        description={t('uploadsIntro')}
+        title={periodLabel ?? t('loading')}
+        meta={
+          client ? (
+            <span className="tabular-nums">
+              {[
+                client.name,
+                client.nit ? `${t('clientNit')} ${client.nit}` : null,
+                client.defaultTipoOperacion && client.defaultTipoIngreso
+                  ? t('periodRentaDefaults', {
+                      operacion: client.defaultTipoOperacion,
+                      ingreso: client.defaultTipoIngreso,
+                    })
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          ) : undefined
+        }
       />
 
       {client ? (

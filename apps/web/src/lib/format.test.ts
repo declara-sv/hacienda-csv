@@ -6,6 +6,7 @@ import {
   formatMoney,
   formatPeriod,
   pluralize,
+  previousMonth,
   toCents,
 } from './format'
 
@@ -36,10 +37,14 @@ describe('formatBytes', () => {
 })
 
 describe('detectSourceFileKind', () => {
-  it('detects Excel and PDF by extension, case-insensitive', () => {
-    expect(detectSourceFileKind('ventas.xlsx')).toBe('Excel')
-    expect(detectSourceFileKind('VENTAS.XLS')).toBe('Excel')
+  it('detects PDF by extension, case-insensitive', () => {
     expect(detectSourceFileKind('factura.PDF')).toBe('PDF')
+    expect(detectSourceFileKind('factura.pdf')).toBe('PDF')
+  })
+
+  it('rejects Excel, which the API cannot read yet', () => {
+    expect(detectSourceFileKind('ventas.xlsx')).toBeNull()
+    expect(detectSourceFileKind('VENTAS.XLS')).toBeNull()
   })
 
   it('returns null for anything else', () => {
@@ -81,5 +86,21 @@ describe('formatIsoDate', () => {
     expect(formatIsoDate('2025-10-01')).toBe('01/10/2025')
     expect(formatIsoDate(null)).toBe('')
     expect(formatIsoDate('otra')).toBe('otra')
+  })
+})
+
+describe('previousMonth', () => {
+  it('suggests the month before today', () => {
+    expect(previousMonth(new Date(2026, 10, 17))).toEqual({
+      year: 2026,
+      month: 10,
+    })
+  })
+
+  it('wraps January back to December of the previous year', () => {
+    expect(previousMonth(new Date(2027, 0, 5))).toEqual({
+      year: 2026,
+      month: 12,
+    })
   })
 })

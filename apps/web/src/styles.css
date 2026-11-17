@@ -1,5 +1,5 @@
 /*
-  HaciendaCSV design tokens.
+  AnexosFácil design tokens.
 
   Shape lock: interactive controls (inputs, buttons) use --radius-control (8px),
   containers (panels, tiles) use --radius-container (16px), nav links and status
@@ -27,8 +27,9 @@
   --surface-sunken: #eee9dc;
   --ink: #1a2724;
   --ink-muted: #5a6662;
+  /* --line separates content; --line-strong outlines controls (>= 3:1). */
   --line: #ddd7c8;
-  --line-strong: #b6ae9c;
+  --line-strong: #8a8270;
 
   --accent: #24513f;
   --accent-hover: #1b4033;
@@ -48,12 +49,12 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --surface: #121917;
-    --surface-raised: #1a2320;
+    --surface-raised: #1c2724;
     --surface-sunken: #0c1210;
     --ink: #ebe6da;
     --ink-muted: #a3aca7;
-    --line: #2a3532;
-    --line-strong: #46534f;
+    --line: #2f3b37;
+    --line-strong: #6f7d78;
 
     --accent: #58a486;
     --accent-hover: #6cb597;
@@ -136,12 +137,6 @@
   body {
     margin: 0;
     min-height: 100dvh;
-    background-image: radial-gradient(
-      64rem 40rem at 100% -10%,
-      color-mix(in oklab, var(--accent-soft) 70%, transparent),
-      transparent 70%
-    );
-    background-repeat: no-repeat;
   }
 
   ::selection {

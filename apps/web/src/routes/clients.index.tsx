@@ -17,12 +17,13 @@ import { Notice } from '#/components/ui/Notice'
 import { PageHeader } from '#/components/ui/PageHeader'
 import { TileGridSkeleton } from '#/components/ui/Skeleton'
 import { useI18n } from '#/i18n/I18nProvider'
+import { cn } from '#/lib/cn'
 import { ApiError, clientsApi } from '#/lib/api-client'
 import type { ClientSummary } from '#/lib/api-types'
 import type { CSSProperties } from 'react'
 
 export const Route = createFileRoute('/clients/')({
-  head: () => ({ meta: [{ title: 'Clientes | HaciendaCSV' }] }),
+  head: () => ({ meta: [{ title: 'Clientes | AnexosFácil' }] }),
   component: ClientsHomePage,
 })
 
@@ -49,6 +50,8 @@ function ClientsHomePage() {
     )
   }, [clients, query])
 
+  const noClients = clientsQuery.isSuccess && clients.length === 0
+
   const openCreate = () => {
     setSuccess(null)
     setCreating(true)
@@ -60,15 +63,15 @@ function ClientsHomePage() {
         title={t('clientsTitle')}
         description={t('clientsIntro')}
         actions={
-          <Button
-            icon={<Plus className="size-4" strokeWidth={2} />}
-            onClick={() => (creating ? setCreating(false) : openCreate())}
-            aria-expanded={creating}
-            aria-controls="new-client"
-            variant={creating ? 'secondary' : 'primary'}
-          >
-            {t('createClient')}
-          </Button>
+          // The form has its own Cancel; the empty state has its own button.
+          !creating && !noClients ? (
+            <Button
+              icon={<Plus className="size-4" strokeWidth={2} />}
+              onClick={openCreate}
+            >
+              {t('createClient')}
+            </Button>
+          ) : null
         }
       />
 
@@ -89,7 +92,12 @@ function ClientsHomePage() {
       ) : null}
 
       <section aria-labelledby="clients-list-heading" className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div
+          className={cn(
+            'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between',
+            noClients && 'sr-only',
+          )}
+        >
           <h2
             id="clients-list-heading"
             className="text-lg font-semibold text-ink"

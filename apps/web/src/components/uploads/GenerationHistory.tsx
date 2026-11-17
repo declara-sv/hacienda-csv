@@ -1,4 +1,4 @@
-import { Download, FileSpreadsheet } from 'lucide-react'
+import { ChevronRight, Download, FileSpreadsheet } from 'lucide-react'
 import type {
   Artifact,
   GenerationRun,
@@ -135,9 +135,51 @@ export function GenerationHistory({
                 {t('generationPartialFailure', { count: failedFiles })}
               </Notice>
             ) : null}
+            {run.artifacts.length > 0 ? (
+              <ul className="space-y-2 border-t border-line pt-3">
+                {run.artifacts.map((artifact) => (
+                  <li
+                    key={artifact.id}
+                    className="flex flex-wrap items-center justify-between gap-3"
+                  >
+                    <span className="min-w-0 text-sm">
+                      <span className="break-all font-semibold text-ink">
+                        {artifact.fileName}
+                      </span>
+                      {typeof artifact.rowCount === 'number' ? (
+                        <span className="text-ink-muted">
+                          {' · '}
+                          {artifact.rowCount === 1
+                            ? t('artifactRowsOne')
+                            : t('artifactRows', { count: artifact.rowCount })}
+                        </span>
+                      ) : null}
+                    </span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<Download className="size-4" />}
+                      loading={downloadingArtifactIds?.has(artifact.id)}
+                      loadingLabel={t('downloading')}
+                      aria-label={t('downloadArtifact', {
+                        name: artifact.fileName,
+                      })}
+                      onClick={() => onDownload(artifact)}
+                    >
+                      {t('downloadCsv')}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {run.files.length > 0 ? (
-              <details className="border-t border-line pt-3">
-                <summary className="cursor-pointer text-sm font-semibold text-ink">
+              <details className="group border-t border-line pt-3">
+                <summary className="inline-flex cursor-pointer items-center gap-1.5 rounded-control text-sm font-semibold text-ink">
+                  <ChevronRight
+                    className="size-4 text-ink-muted transition group-open:rotate-90"
+                    strokeWidth={2}
+                    aria-hidden
+                  />
                   {t('generationFiles', { count: run.files.length })}
                 </summary>
                 <ul className="mt-3 divide-y divide-line">
@@ -167,41 +209,6 @@ export function GenerationHistory({
                   ))}
                 </ul>
               </details>
-            ) : null}
-            {run.artifacts.length > 0 ? (
-              <ul className="space-y-2 border-t border-line pt-3">
-                {run.artifacts.map((artifact) => (
-                  <li
-                    key={artifact.id}
-                    className="flex flex-wrap items-center justify-between gap-3"
-                  >
-                    <span className="min-w-0 text-sm">
-                      <span className="break-all font-semibold text-ink">
-                        {artifact.fileName}
-                      </span>
-                      {typeof artifact.rowCount === 'number' ? (
-                        <span className="text-ink-muted">
-                          {' · '}
-                          {artifact.rowCount === 1
-                            ? t('artifactRowsOne')
-                            : t('artifactRows', { count: artifact.rowCount })}
-                        </span>
-                      ) : null}
-                    </span>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon={<Download className="size-4" />}
-                      loading={downloadingArtifactIds?.has(artifact.id)}
-                      loadingLabel={t('downloading')}
-                      aria-label={`${t('downloadCsv')}: ${artifact.fileName}`}
-                      onClick={() => onDownload(artifact)}
-                    >
-                      {t('downloadCsv')}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
             ) : null}
           </article>
         )

@@ -18,6 +18,14 @@ export function formatPeriod(year: number, month: number) {
   return `${name} ${year}`
 }
 
+/** The month being declared: the one before `today`'s. */
+export function previousMonth(today: Date) {
+  const month = today.getMonth() // 0-based, so this is already last month
+  return month === 0
+    ? { year: today.getFullYear() - 1, month: 12 }
+    : { year: today.getFullYear(), month }
+}
+
 export function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes < 0) return '0 B'
   if (bytes < 1024) return `${bytes} B`
@@ -39,11 +47,10 @@ export function formatDateTime(iso: string) {
 
 export type SourceFileKind = 'Excel' | 'PDF'
 
+/** Only PDFs are accepted: the API cannot read Excel files yet. */
 export function detectSourceFileKind(fileName: string): SourceFileKind | null {
   const ext = fileName.toLowerCase().split('.').pop() ?? ''
-  if (ext === 'pdf') return 'PDF'
-  if (ext === 'xls' || ext === 'xlsx') return 'Excel'
-  return null
+  return ext === 'pdf' ? 'PDF' : null
 }
 
 export function pluralize(count: number, singular: string, plural: string) {
