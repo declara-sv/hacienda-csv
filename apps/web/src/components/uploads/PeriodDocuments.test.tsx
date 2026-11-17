@@ -170,22 +170,19 @@ describe('PeriodDocuments', () => {
       upload('u1', { includedInLatestRun: true }),
       upload('u2', { originalFileName: 'escaneo.pdf', sourceFileKind: 'PDF' }),
     ])
+    listRuns.mockResolvedValue([run(1)])
     setup()
 
     const documents = await screen.findByRole('list', {
-      name: 'Listado de documentos',
+      name: 'Archivos del período',
     })
     const rows = within(documents).getAllByRole('listitem')
     expect(rows).toHaveLength(2)
     expect(within(rows[0]).getByText('u1.xlsx')).toBeTruthy()
-    expect(
-      within(rows[0]).getByText('Forma parte de la última versión completada'),
-    ).toBeTruthy()
+    expect(within(rows[0]).getByText('En la versión vigente')).toBeTruthy()
     expect(within(rows[1]).getByText('escaneo.pdf')).toBeTruthy()
     expect(
-      within(rows[1]).getByText(
-        'No forma parte de la última versión completada',
-      ),
+      within(rows[1]).getByText('No está en la versión vigente'),
     ).toBeTruthy()
     expect(within(rows[0]).getByText(/2 KB/)).toBeTruthy()
     // No per-upload processing status survives from the removed jobs model.
@@ -199,12 +196,14 @@ describe('PeriodDocuments', () => {
     setup()
 
     expect(screen.getByText('Cargando documentos')).toBeTruthy()
-    expect(screen.queryByText('Todavía no hay documentos en este período.')) //
+    expect(screen.queryByText('Todavía no hay archivos en este período.')) //
       .toBeNull()
 
     await act(async () => uploads.resolve([]))
-    await screen.findByText('Todavía no hay documentos en este período.')
-    expect(screen.getByText('Todavía no has generado un CSV.')).toBeTruthy()
+    await screen.findByText('Todavía no hay archivos en este período.')
+    expect(
+      screen.getByText('Todavía no has generado los anexos de este período.'),
+    ).toBeTruthy()
   })
 
   it('shows a documents load error and retries the query', async () => {
@@ -224,14 +223,14 @@ describe('PeriodDocuments', () => {
   it('refreshes documents after an upload without ever creating a run', async () => {
     createUpload.mockResolvedValue(upload('u1'))
     setup()
-    await screen.findByText('Todavía no hay documentos en este período.')
+    await screen.findByText('Todavía no hay archivos en este período.')
     expect(listUploads).toHaveBeenCalledTimes(1)
 
-    fireEvent.change(screen.getByLabelText('Seleccionar archivos'), {
-      target: { files: [new File(['data'], 'nuevo.xlsx')] },
-    })
+    // Picking a file uploads it right away; there is no submit step.
     listUploads.mockResolvedValue([upload('u1')])
-    fireEvent.click(button('Subir archivos'))
+    fireEvent.change(screen.getByLabelText('Elegir PDF'), {
+      target: { files: [new File(['data'], 'nuevo.pdf')] },
+    })
 
     await screen.findByText('u1.xlsx')
     expect(listUploads).toHaveBeenCalledTimes(2)
@@ -284,39 +283,31 @@ describe('PeriodDocuments', () => {
     await screen.findByText('u1.xlsx')
     await waitFor(() => expect(generateButton().disabled).toBe(false))
 
-    // A local queue entry, even a rejected one, must be resolved first.
+    // A file still on its way to the server blocks generation.
     const attempt = defer<Upload>()
     createUpload.mockReturnValue(attempt.promise)
-    fireEvent.change(screen.getByLabelText('Seleccionar archivos'), {
-      target: { files: [new File(['data'], 'pendiente.xlsx')] },
+    fireEvent.change(screen.getByLabelText('Elegir PDF'), {
+      target: { files: [new File(['data'], 'pendiente.pdf')] },
     })
-    expect(
-      screen.getByText(
-        'Sube o quita los archivos pendientes antes de generar.',
-      ),
-    ).toBeTruthy()
-    expect(generateButton().disabled).toBe(true)
-
-    fireEvent.click(button('Subir archivos'))
     await screen.findByText(
       'Espera a que terminen los cambios sobre los documentos.',
     )
     expect(generateButton().disabled).toBe(true)
 
+    // A rejected upload stays listed with its reason but blocks nothing.
     await act(async () => {
       attempt.reject(new ApiError(400, 'Archivo inválido', null))
       await attempt.promise.catch(() => {})
     })
     await screen.findByText('Archivo inválido')
-    expect(generateButton().disabled).toBe(true)
-    expect(
-      screen.getByText(
-        'Sube o quita los archivos pendientes antes de generar.',
-      ),
-    ).toBeTruthy()
-
-    fireEvent.click(button('Quitar pendiente.xlsx'))
     await waitFor(() => expect(generateButton().disabled).toBe(false))
+
+    // A file the browser already rejects never blocks either.
+    fireEvent.change(screen.getByLabelText('Elegir PDF'), {
+      target: { files: [new File(['data'], 'ventas.xlsx')] },
+    })
+    expect(screen.getByText('Solo se aceptan PDF.')).toBeTruthy()
+    expect(generateButton().disabled).toBe(false)
     expect(createRun).not.toHaveBeenCalled()
   })
 
@@ -334,11 +325,9 @@ describe('PeriodDocuments', () => {
     // React Query publishes the pending state on its own tick.
     await waitFor(() =>
       expect(
-        screen.getByLabelText<HTMLInputElement>('Seleccionar archivos')
-          .disabled,
+        screen.getByLabelText<HTMLInputElement>('Elegir PDF').disabled,
       ).toBe(true),
     )
-    expect(button('Subir archivos').disabled).toBe(true)
     expect(button('Eliminar u2.xlsx').disabled).toBe(true)
     expect(button('Sí, eliminar').disabled).toBe(true)
 
@@ -527,10 +516,8 @@ describe('PeriodDocuments', () => {
     listUploads.mockResolvedValue([])
     fireEvent.click(button('Sí, eliminar'))
 
-    await screen.findByText('Todavía no hay documentos en este período.')
-    expect(document.activeElement).toBe(
-      screen.getByLabelText('Seleccionar archivos'),
-    )
+    await screen.findByText('Todavía no hay archivos en este período.')
+    expect(document.activeElement).toBe(screen.getByLabelText('Elegir PDF'))
   })
 
   it('disables deletion only for documents referenced by an active run', async () => {
@@ -613,9 +600,8 @@ describe('PeriodDocuments', () => {
     setup()
     await tick()
 
-    expect(
-      screen.getByText('No forma parte de la última versión completada'),
-    ).toBeTruthy()
+    // Before any version exists there is no membership to report.
+    expect(screen.queryByText('No está en la versión vigente')).toBeNull()
     expect(listRuns).toHaveBeenCalledTimes(1)
     expect(listUploads).toHaveBeenCalledTimes(1)
 
@@ -628,9 +614,7 @@ describe('PeriodDocuments', () => {
 
     expect(listRuns).toHaveBeenCalledTimes(2)
     expect(listUploads).toHaveBeenCalledTimes(2)
-    expect(
-      screen.getByText('Forma parte de la última versión completada'),
-    ).toBeTruthy()
+    expect(screen.getByText('En la versión vigente')).toBeTruthy()
 
     // Terminal runs stop polling and stop invalidating documents.
     await tick(15000)
@@ -661,11 +645,11 @@ describe('PeriodDocuments', () => {
     await screen.findByText('La generación falló.')
     expect(
       screen.getByText(
-        '1 archivo(s) no se incluyeron en este CSV. Revisa los errores de esta versión.',
+        '1 archivo(s) no entraron en esta versión. Revisa los errores de abajo.',
       ),
     ).toBeTruthy()
 
-    const download = button('Descargar CSV: version-1.csv')
+    const download = button('Descargar version-1.csv')
     fireEvent.click(download)
     await waitFor(() =>
       expect(downloadArtifact).toHaveBeenCalledWith('csv-1', 'version-1.csv'),
@@ -677,7 +661,7 @@ describe('PeriodDocuments', () => {
       await started.promise.catch(() => {})
     })
     await screen.findByText('El archivo ya no existe.')
-    expect(button('Descargar CSV: version-1.csv').disabled).toBe(false)
+    expect(button('Descargar version-1.csv').disabled).toBe(false)
   })
 
   it('keeps a separate cache per period and drops local state on remount', async () => {
@@ -686,11 +670,10 @@ describe('PeriodDocuments', () => {
     const view = setup({ periodId: 'period-1' })
 
     await screen.findByText('u1.xlsx')
-    fireEvent.change(screen.getByLabelText('Seleccionar archivos'), {
+    fireEvent.change(screen.getByLabelText('Elegir PDF'), {
       target: { files: [new File(['data'], 'pendiente.xlsx')] },
     })
-    await waitFor(() => expect(generateButton().disabled).toBe(true))
-    fireEvent.click(button('Quitar pendiente.xlsx'))
+    expect(screen.getByText('pendiente.xlsx')).toBeTruthy()
     await waitFor(() => expect(generateButton().disabled).toBe(false))
     fireEvent.click(generateButton())
     await screen.findByText('Período cerrado.')
@@ -722,7 +705,7 @@ describe('PeriodDocuments', () => {
     setup()
 
     const list = await screen.findByRole('list', {
-      name: 'Listado de documentos',
+      name: 'Archivos del período',
     })
     const items = within(list).getAllByRole('listitem')
     expect(within(items[0]).getByText('En cola para leer')).toBeTruthy()
@@ -836,7 +819,7 @@ describe('PeriodDocuments', () => {
     setup()
 
     await screen.findByText(
-      'Hay 1 documento(s) con errores. Corrígelos o exclúyelos antes de generar.',
+      'Corrige o excluye 1 documento con error para generar.',
     )
     expect(generateButton().disabled).toBe(true)
 
@@ -870,5 +853,75 @@ describe('PeriodDocuments', () => {
       name: 'Documentos leídos del período',
     })
     expect(within(table).getByText('Consumidor final')).toBeTruthy()
+  })
+  it('warns in the generate bar about files that could not be read', async () => {
+    listUploads.mockResolvedValue([
+      upload('u1'),
+      upload('roto', {
+        extractionStatus: 'Failed',
+        extractionError: 'El PDF no tiene texto legible.',
+        documentsCount: 0,
+      }),
+    ])
+    listDocuments.mockResolvedValue([documentDto('d1')])
+    setup()
+
+    const bar = await screen.findByRole('region', { name: 'Generar anexos' })
+    await within(bar).findByText('Listo para generar con 1 documento incluido.')
+    expect(
+      within(bar).getByText(
+        '1 archivo no se pudo leer y no entrará en los anexos.',
+      ),
+    ).toBeTruthy()
+    expect(generateButton().disabled).toBe(false)
+    const status = screen.getByLabelText('Estado del período')
+    expect(within(status).getByText('1 no se pudo leer')).toBeTruthy()
+  })
+
+  it('folds read files in long months and keeps failures in view', async () => {
+    listUploads.mockResolvedValue([
+      ...['a', 'b', 'c', 'd', 'e', 'f'].map((id) => upload(id)),
+      upload('roto', { extractionStatus: 'Failed', documentsCount: 0 }),
+    ])
+    setup()
+
+    const list = await screen.findByRole('list', {
+      name: 'Archivos del período',
+    })
+    await waitFor(() =>
+      expect(within(list).getAllByRole('listitem')).toHaveLength(1),
+    )
+    expect(within(list).getByText('roto.xlsx')).toBeTruthy()
+
+    fireEvent.click(button('Mostrar 6 archivos leídos'))
+    expect(within(list).getAllByRole('listitem')).toHaveLength(7)
+    expect(
+      button('Ocultar archivos leídos').getAttribute('aria-expanded'),
+    ).toBe('true')
+  })
+
+  it('jumps to the documents with errors from the generate bar', async () => {
+    listUploads.mockResolvedValue([upload('u1')])
+    listDocuments.mockResolvedValue([
+      documentDto('d1', { receptorNombre: 'Correcto' }),
+      documentDto('d2', {
+        receptorNombre: 'Con error',
+        status: 'Error',
+        issues: [
+          { code: 'x', severity: 'Error', message: 'Falla', field: null },
+        ],
+      }),
+    ])
+    setup()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver errores' }))
+    expect(screen.getByLabelText<HTMLSelectElement>('Estado').value).toBe(
+      'Error',
+    )
+    const table = screen.getByRole('table', {
+      name: 'Documentos leídos del período',
+    })
+    expect(within(table).queryByText('Correcto')).toBeNull()
+    expect(within(table).getByText('Con error')).toBeTruthy()
   })
 })

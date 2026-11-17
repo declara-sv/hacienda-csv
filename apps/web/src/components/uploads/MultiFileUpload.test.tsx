@@ -41,14 +41,11 @@ function setup(
     </I18nProvider>,
   )
 }
-const input = () =>
-  screen.getByLabelText<HTMLInputElement>('Seleccionar archivos')
+const input = () => screen.getByLabelText<HTMLInputElement>('Elegir PDF')
 const select = (...files: File[]) =>
   fireEvent.change(input(), { target: { files } })
-const submit = () =>
-  fireEvent.click(
-    screen.getByRole<HTMLButtonElement>('button', { name: 'Subir archivos' }),
-  )
+const dropzone = () =>
+  screen.getByRole<HTMLButtonElement>('button', { name: /Arrastra los PDF/ })
 afterEach(cleanup)
 beforeEach(() => {
   vi.resetAllMocks()
@@ -56,60 +53,47 @@ beforeEach(() => {
 })
 
 describe('MultiFileUpload', () => {
-  it('appends mixed selections with detected types and supports drag and drop', async () => {
+  it('uploads picked and dropped PDFs right away, without a submit step', async () => {
     setup()
     expect(input().multiple).toBe(true)
-    select(file('one.xlsx'), file('two.pdf'))
-    select(file('three.xls'))
-    fireEvent.drop(
-      screen.getByRole<HTMLButtonElement>('button', {
-        name: /Arrastra archivos/,
-      }),
-      {
-        dataTransfer: { files: [file('four.PDF')] },
-      },
-    )
-    for (const name of ['one.xlsx', 'two.pdf', 'three.xls', 'four.PDF'])
-      expect(screen.getByText(name)).toBeTruthy()
-    submit()
-    await waitFor(() => expect(create).toHaveBeenCalledTimes(4))
-    expect(create.mock.calls.map((call) => call[2].sourceFileKind)).toEqual([
-      'Excel',
-      'PDF',
-      'Excel',
-      'PDF',
+    expect(input().accept).toContain('.pdf')
+    expect(screen.queryByRole('button', { name: 'Subir archivos' })).toBeNull()
+    select(file('one.pdf'), file('two.pdf'))
+    fireEvent.drop(dropzone(), {
+      dataTransfer: { files: [file('three.PDF')] },
+    })
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(3))
+    expect(create.mock.calls.map((call) => call[2].file.name)).toEqual([
+      'one.pdf',
+      'two.pdf',
+      'three.PDF',
     ])
+    expect(
+      create.mock.calls.every((call) => call[2].sourceFileKind === 'PDF'),
+    ).toBe(true)
   })
-  it('keeps invalid and empty files removable and reports all queued entries', async () => {
+  it('rejects non-PDF and empty files inline without blocking the period', async () => {
     const onQueueStateChange = vi.fn()
     setup({ onQueueStateChange })
-    select(file('bad.csv'), file('empty.pdf', ''))
-    expect(screen.getAllByRole('alert')).toHaveLength(2)
-    const submitButton = screen.getByRole<HTMLButtonElement>('button', {
-      name: 'Subir archivos',
-    })
-    expect(submitButton.disabled).toBe(true)
-    // An idle action must not advertise aria-busy="false".
-    expect(submitButton.getAttribute('aria-busy')).toBeNull()
-    expect(onQueueStateChange).toHaveBeenLastCalledWith({
-      pendingCount: 2,
-      busy: false,
-    })
-    fireEvent.click(
-      screen.getByRole<HTMLButtonElement>('button', { name: 'Quitar bad.csv' }),
-    )
-    fireEvent.click(
-      screen.getByRole<HTMLButtonElement>('button', {
-        name: 'Quitar empty.pdf',
-      }),
-    )
+    select(file('ventas.xlsx'), file('empty.pdf', ''))
+    const alerts = screen.getAllByRole('alert')
+    expect(alerts.map((alert) => alert.textContent)).toEqual([
+      'Solo se aceptan PDF.',
+      'El archivo está vacío.',
+    ])
     expect(onQueueStateChange).toHaveBeenLastCalledWith({
       pendingCount: 0,
       busy: false,
     })
+    fireEvent.click(
+      screen.getByRole<HTMLButtonElement>('button', {
+        name: 'Quitar ventas.xlsx',
+      }),
+    )
+    expect(screen.queryByText(/ventas\.xlsx/)).toBeNull()
     expect(create).not.toHaveBeenCalled()
   })
-  it('uploads sequentially, locks editing and awaits refresh before finishing', async () => {
+  it('uploads sequentially, queues files added meanwhile and awaits refresh', async () => {
     const first = deferred()
     const refresh = deferred()
     const onUploaded = vi.fn().mockReturnValueOnce(refresh.promise)
@@ -119,24 +103,20 @@ describe('MultiFileUpload', () => {
       return {} as never
     })
     setup({ onUploaded, onQueueStateChange })
-    select(file('one.pdf'), file('two.xlsx'))
-    submit()
-    submit()
+    select(file('one.pdf'))
     expect(create).toHaveBeenCalledTimes(1)
-    expect(input().disabled).toBe(true)
-    expect(
-      screen.getByRole<HTMLButtonElement>('button', {
-        name: 'Quitar two.xlsx',
-      }).disabled,
-    ).toBe(true)
-    select(file('ignored.pdf'))
-    expect(screen.queryByText('ignored.pdf')).toBeNull()
-    await act(async () => first.resolve())
+    select(file('two.pdf'))
     expect(create).toHaveBeenCalledTimes(1)
     expect(onQueueStateChange).toHaveBeenLastCalledWith({
-      pendingCount: 1,
+      pendingCount: 2,
       busy: true,
     })
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Quitar one.pdf' })
+        .disabled,
+    ).toBe(true)
+    await act(async () => first.resolve())
+    expect(create).toHaveBeenCalledTimes(1)
     await act(async () => refresh.resolve())
     await waitFor(() =>
       expect(onQueueStateChange).toHaveBeenLastCalledWith({
@@ -144,6 +124,7 @@ describe('MultiFileUpload', () => {
         busy: false,
       }),
     )
+    expect(create).toHaveBeenCalledTimes(2)
     expect(onUploaded).toHaveBeenCalledTimes(2)
     expect(screen.queryByText('one.pdf')).toBeNull()
   })
@@ -153,16 +134,10 @@ describe('MultiFileUpload', () => {
       .mockRejectedValueOnce(new Error('network'))
     const onUploaded = vi.fn()
     setup({ onUploaded })
-    select(file('saved.xlsx'), file('failed.pdf'))
-    submit()
-    await waitFor(() => expect(onUploaded).toHaveBeenCalledTimes(1))
-    expect(screen.queryByText('saved.xlsx')).toBeNull()
-    expect(screen.getByRole('alert')).toBeTruthy()
-    expect(
-      screen.getByRole<HTMLButtonElement>('button', {
-        name: 'Subir archivos',
-      }).disabled,
-    ).toBe(true)
+    select(file('saved.pdf'), file('failed.pdf'))
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy())
+    expect(onUploaded).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('saved.pdf')).toBeNull()
     fireEvent.click(
       screen.getByRole<HTMLButtonElement>('button', {
         name: 'Reintentar failed.pdf',
@@ -170,7 +145,7 @@ describe('MultiFileUpload', () => {
     )
     await waitFor(() => expect(create).toHaveBeenCalledTimes(3))
     expect(create.mock.calls.map((call) => call[2].file.name)).toEqual([
-      'saved.xlsx',
+      'saved.pdf',
       'failed.pdf',
       'failed.pdf',
     ])
@@ -179,7 +154,6 @@ describe('MultiFileUpload', () => {
     create.mockRejectedValueOnce(new ApiError(400, 'Documento inválido', null))
     setup()
     select(file('invalid.pdf'))
-    submit()
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toBe('Documento inválido'),
     )
@@ -187,22 +161,22 @@ describe('MultiFileUpload', () => {
   it('never retries a saved file when refresh fails', async () => {
     setup({ onUploaded: vi.fn().mockRejectedValue(new Error('refresh')) })
     select(file('saved.pdf'))
-    submit()
-    await waitFor(() => expect(input().disabled).toBe(false))
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'El archivo se guardó, pero no se pudo actualizar el listado. Recarga la página.',
+        ),
+      ).toBeTruthy(),
+    )
     expect(screen.queryByText('saved.pdf')).toBeNull()
     expect(create).toHaveBeenCalledTimes(1)
   })
   it('honors disabled and ignores drops while disabled', () => {
     setup({ disabled: true })
     select(file('ignored.pdf'))
-    fireEvent.drop(
-      screen.getByRole<HTMLButtonElement>('button', {
-        name: /Arrastra archivos/,
-      }),
-      {
-        dataTransfer: { files: [file('drop.pdf')] },
-      },
-    )
+    fireEvent.drop(dropzone(), {
+      dataTransfer: { files: [file('drop.pdf')] },
+    })
     expect(input().disabled).toBe(true)
     expect(screen.queryByText('drop.pdf')).toBeNull()
     expect(create).not.toHaveBeenCalled()
@@ -217,7 +191,6 @@ describe('MultiFileUpload', () => {
     const onQueueStateChange = vi.fn()
     const view = setup({ onUploaded, onQueueStateChange })
     select(file('one.pdf'), file('two.pdf'))
-    submit()
     view.unmount()
     const notifications = onQueueStateChange.mock.calls.length
     await act(async () => first.resolve())

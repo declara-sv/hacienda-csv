@@ -1,11 +1,11 @@
 import { ClerkProvider } from '@clerk/tanstack-react-start'
-import { esES } from '@clerk/localizations'
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 import { clerkAppearance } from '#/auth/clerk-appearance'
+import { clerkLocalization } from '#/auth/clerk-localization'
 import { AFTER_AUTH_PATH, SIGN_IN_PATH, SIGN_UP_PATH } from '#/auth/paths'
 import { AppProviders } from '#/components/AppProviders'
 import { AppShell } from '#/components/AppShell'
-import { ErrorView } from '#/components/ui/ErrorView'
+import { ErrorView, NotFoundView } from '#/components/ui/ErrorView'
 import appCss from '../styles.css?url'
 
 export const Route = createRootRoute({
@@ -13,7 +13,7 @@ export const Route = createRootRoute({
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'HaciendaCSV' },
+      { title: 'AnexosFácil' },
       { name: 'color-scheme', content: 'light dark' },
       {
         name: 'theme-color',
@@ -35,6 +35,7 @@ export const Route = createRootRoute({
   }),
   shellComponent: RootDocument,
   errorComponent: ErrorView,
+  notFoundComponent: NotFoundView,
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
@@ -45,7 +46,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <ClerkProvider
-          localization={esES}
+          localization={clerkLocalization}
           appearance={clerkAppearance}
           signInUrl={SIGN_IN_PATH}
           signUpUrl={SIGN_UP_PATH}

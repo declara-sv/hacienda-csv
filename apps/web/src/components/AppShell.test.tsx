@@ -44,6 +44,18 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', { name: 'Ingresar' })).toBeNull()
   })
 
+  it('hides the account name when it is only the email', async () => {
+    const get = vi.spyOn(meApi, 'get').mockResolvedValue({
+      user: { id: 'u1', email: 'ana@example.com', fullName: '' },
+      account: { id: 'a1', name: 'ana@example.com', role: 'owner' },
+    })
+
+    renderShell()
+
+    await vi.waitFor(() => expect(get).toHaveBeenCalled())
+    expect(screen.queryByText('ana@example.com')).toBeNull()
+  })
+
   it('does not call /api/me while signed out', () => {
     vi.mocked(useAuth).mockReturnValueOnce({
       isLoaded: true,

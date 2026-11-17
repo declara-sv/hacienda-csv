@@ -1,5 +1,5 @@
 import { Link, useRouter } from '@tanstack/react-router'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, MapPinOff } from 'lucide-react'
 import { useI18n } from '#/i18n/I18nProvider'
 import { Button, buttonClasses } from './Button'
 
@@ -29,6 +29,25 @@ export function ErrorView({ error }: { error: unknown }) {
           {t('errorHome')}
         </Link>
       </div>
+    </div>
+  )
+}
+
+export function NotFoundView() {
+  const { t } = useI18n()
+
+  return (
+    <div className="rise mx-auto flex max-w-lg flex-col items-start gap-4 rounded-container border border-line bg-surface-raised p-6 shadow-raised">
+      <span className="inline-flex size-11 items-center justify-center rounded-container bg-accent-soft text-accent">
+        <MapPinOff className="size-5" strokeWidth={1.75} aria-hidden />
+      </span>
+      <div className="space-y-1">
+        <h1 className="text-lg font-semibold text-ink">{t('notFoundTitle')}</h1>
+        <p className="text-sm text-ink-muted">{t('notFoundBody')}</p>
+      </div>
+      <Link to="/clients" className={buttonClasses('primary')}>
+        {t('errorHome')}
+      </Link>
     </div>
   )
 }

@@ -79,7 +79,6 @@ describe('ClientForm', () => {
     expect(screen.getByRole('option', { name: '4 – Servicios' })).toBeTruthy()
 
     change('Nombre del cliente', '  Comercial El Roble ')
-    change('Identificación', '0614-010101-101-1')
     change('NIT', '06140101011011')
     change('NRC', '')
     change('Tipo de operación (Renta)', '1')
@@ -89,7 +88,7 @@ describe('ClientForm', () => {
     await waitFor(() =>
       expect(createClient).toHaveBeenCalledWith({
         name: 'Comercial El Roble',
-        taxId: '0614-010101-101-1',
+        taxId: '06140101011011',
         notes: null,
         nit: '06140101011011',
         nrc: null,
@@ -127,6 +126,19 @@ describe('ClientForm', () => {
       }),
     )
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
+  })
+
+  it('has no separate identification field', () => {
+    show()
+    expect(screen.queryByLabelText('Identificación')).toBeNull()
+    expect(screen.getByLabelText<HTMLInputElement>('NIT').required).toBe(true)
+  })
+
+  it('prefills the NIT from the identification of an older client', () => {
+    show({ client: { ...detail, nit: null, taxId: '0614-999999-101-1' } })
+    expect(screen.getByLabelText<HTMLInputElement>('NIT').value).toBe(
+      '0614-999999-101-1',
+    )
   })
 
   it('shows the API validation message', async () => {

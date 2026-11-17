@@ -1,3 +1,4 @@
+import { cn } from '#/lib/cn'
 import type { ReactNode } from 'react'
 
 type PageHeaderProps = {
@@ -15,8 +16,8 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <header className="rise flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-      <div className="min-w-0 space-y-2">
-        <h1 className="font-title text-3xl leading-tight text-ink md:text-4xl">
+      <div className="min-w-0 space-y-1">
+        <h1 className="font-title text-2xl leading-tight font-semibold text-ink md:text-[1.75rem]">
           {title}
         </h1>
         {meta ? <div className="text-sm text-ink-muted">{meta}</div> : null}
@@ -32,6 +33,7 @@ export function PageHeader({
 }
 
 type SectionProps = {
+  id?: string
   title: string
   description?: string
   actions?: ReactNode
@@ -40,6 +42,7 @@ type SectionProps = {
 }
 
 export function Section({
+  id,
   title,
   description,
   actions,
@@ -47,7 +50,7 @@ export function Section({
   className,
 }: SectionProps) {
   return (
-    <section className={className}>
+    <section id={id} className={cn('scroll-mt-40', className)}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h2 className="text-lg font-semibold text-ink">{title}</h2>

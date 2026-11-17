@@ -1,7 +1,7 @@
 {
-  "short_name": "HaciendaCSV",
-  "name": "HaciendaCSV",
-  "description": "Gestor fiscal para contadores en El Salvador",
+  "short_name": "AnexosFácil",
+  "name": "AnexosFácil",
+  "description": "Anexos de ventas del F-07 a partir de los PDF de DTE",
   "lang": "es",
   "icons": [
     {

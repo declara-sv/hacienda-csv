@@ -424,7 +424,7 @@ describe('PeriodReview', () => {
         tipoIngresoRenta: '4',
       }),
     )
-    await screen.findByText('Cambios aplicados a 2 documento(s).')
+    await screen.findByText('Cambios aplicados a 2 documentos.')
     expect(
       screen.queryByRole('region', { name: 'Acciones para la selección' }),
     ).toBeNull()

@@ -59,14 +59,14 @@ export function Field({
 }
 
 export const controlClass =
-  'w-full rounded-control border border-line-strong bg-surface-raised px-3 text-base text-ink transition duration-200 placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-60 aria-[invalid=true]:border-danger'
+  'w-full rounded-control border border-line-strong bg-surface-raised px-3 text-ink transition duration-200 placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-60 aria-[invalid=true]:border-danger'
 
 type InputProps = InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }
 
 export function Input({ className, invalid, ...rest }: InputProps) {
   return (
     <input
-      className={cn(controlClass, 'h-10', className)}
+      className={cn(controlClass, 'h-10 text-base', className)}
       aria-invalid={invalid || undefined}
       {...rest}
     />
@@ -75,13 +75,26 @@ export function Input({ className, invalid, ...rest }: InputProps) {
 
 type SelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
   invalid?: boolean
+  /** sm: 32 px tall, for toolbars. */
+  controlSize?: 'md' | 'sm'
 }
 
-export function Select({ className, invalid, children, ...rest }: SelectProps) {
+export function Select({
+  className,
+  invalid,
+  controlSize = 'md',
+  children,
+  ...rest
+}: SelectProps) {
   return (
     <div className="relative">
       <select
-        className={cn(controlClass, 'h-10 appearance-none pr-9', className)}
+        className={cn(
+          controlClass,
+          'appearance-none pr-9',
+          controlSize === 'sm' ? 'h-8 text-sm' : 'h-10 text-base',
+          className,
+        )}
         aria-invalid={invalid || undefined}
         {...rest}
       >
@@ -103,7 +116,7 @@ type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
 export function Textarea({ className, invalid, ...rest }: TextareaProps) {
   return (
     <textarea
-      className={cn(controlClass, 'min-h-28 py-2', className)}
+      className={cn(controlClass, 'min-h-28 py-2 text-base', className)}
       aria-invalid={invalid || undefined}
       {...rest}
     />

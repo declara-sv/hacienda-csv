@@ -15,7 +15,7 @@ export function EmptyState({
   action,
 }: EmptyStateProps) {
   return (
-    <div className="rise flex flex-col items-start gap-3 rounded-container border border-dashed border-line-strong px-6 py-10 sm:items-center sm:text-center">
+    <div className="rise flex flex-col items-start gap-3 rounded-container border border-dashed border-line px-6 py-10 sm:items-center sm:text-center">
       <span className="inline-flex size-11 items-center justify-center rounded-container bg-accent-soft text-accent">
         <Icon className="size-5" strokeWidth={1.75} aria-hidden />
       </span>

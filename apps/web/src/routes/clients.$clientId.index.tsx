@@ -1,39 +1,30 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  ArrowRight,
-  CalendarDays,
-  ChevronDown,
-  Pencil,
-  Plus,
-} from 'lucide-react'
+import { ArrowRight, CalendarDays, Pencil } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { ClientForm } from '#/components/clients/ClientForm'
 import { RentaDefaultsHint } from '#/components/clients/RentaDefaultsHint'
 import { Breadcrumb } from '#/components/ui/Breadcrumb'
-import { Button } from '#/components/ui/Button'
+import { Button, buttonClasses } from '#/components/ui/Button'
 import { EmptyState } from '#/components/ui/EmptyState'
-import {
-  Field,
-  Input,
-  Select,
-  Textarea,
-  fieldDescribedBy,
-} from '#/components/ui/Field'
+import { Input, Select } from '#/components/ui/Field'
 import { Notice } from '#/components/ui/Notice'
 import { PageHeader, Section } from '#/components/ui/PageHeader'
 import { PageSkeleton } from '#/components/ui/Skeleton'
 import { useI18n } from '#/i18n/I18nProvider'
 import { ApiError, clientsApi } from '#/lib/api-client'
-import { MONTHS_ES, formatDateTime, formatPeriod } from '#/lib/format'
+import { MONTHS_ES, formatPeriod, previousMonth } from '#/lib/format'
 import { rentaLabel, useRentaCatalog } from '#/lib/renta'
-import type { ClientDetail } from '#/lib/api-types'
+import type { ClientDetail, FilingPeriodSummary } from '#/lib/api-types'
 import type { CSSProperties } from 'react'
 
 export const Route = createFileRoute('/clients/$clientId/')({
-  head: () => ({ meta: [{ title: 'Cliente | HaciendaCSV' }] }),
+  head: () => ({ meta: [{ title: 'Cliente | AnexosFácil' }] }),
   component: ClientDetailPage,
 })
+
+const sortPeriods = (periods: readonly FilingPeriodSummary[]) =>
+  [...periods].sort((a, b) => b.year - a.year || b.month - a.month)
 
 function ClientDetailPage() {
   const { clientId } = Route.useParams()
@@ -48,6 +39,7 @@ function ClientDetailPage() {
   const [editing, setEditing] = useState(false)
   const [saved, setSaved] = useState(false)
   const editTriggerRef = useRef<HTMLButtonElement>(null)
+  const latestPeriod = client ? sortPeriods(client.filingPeriods)[0] : undefined
 
   const closeEditor = (didSave: boolean) => {
     setEditing(false)
@@ -79,22 +71,48 @@ function ClientDetailPage() {
         <>
           <PageHeader
             title={client.name}
-            meta={<span className="tabular-nums">{client.taxId}</span>}
+            meta={
+              <span className="tabular-nums">
+                {[
+                  client.nit ? `${t('clientNit')} ${client.nit}` : client.taxId,
+                  client.nrc ? `${t('clientNrc')} ${client.nrc}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            }
             description={client.notes ?? undefined}
             actions={
-              <Button
-                ref={editTriggerRef}
-                variant={editing ? 'secondary' : 'primary'}
-                icon={<Pencil className="size-4" strokeWidth={2} />}
-                aria-expanded={editing}
-                aria-controls="client-fiscal"
-                onClick={() => {
-                  setSaved(false)
-                  setEditing((value) => !value)
-                }}
-              >
-                {t('editClient')}
-              </Button>
+              <>
+                {!editing ? (
+                  <Button
+                    ref={editTriggerRef}
+                    variant="secondary"
+                    icon={<Pencil className="size-4" strokeWidth={2} />}
+                    aria-controls="client-fiscal"
+                    onClick={() => {
+                      setSaved(false)
+                      setEditing(true)
+                    }}
+                  >
+                    {t('editClient')}
+                  </Button>
+                ) : null}
+                {latestPeriod ? (
+                  <Link
+                    to="/clients/$clientId/periods/$periodId/uploads"
+                    params={{ clientId, periodId: latestPeriod.id }}
+                    className={buttonClasses('primary')}
+                  >
+                    {t('openPeriod', {
+                      period: formatPeriod(
+                        latestPeriod.year,
+                        latestPeriod.month,
+                      ).toLowerCase(),
+                    })}
+                  </Link>
+                ) : null}
+              </>
             }
           />
 
@@ -128,7 +146,7 @@ function ClientDetailPage() {
               id="client-fiscal-heading"
               className="text-lg font-semibold text-ink"
             >
-              {editing ? t('editClientTitle') : t('clientFiscalTitle')}
+              {editing ? t('editClient') : t('clientFiscalTitle')}
             </h2>
             <div className="mt-4">
               {editing ? (
@@ -147,8 +165,6 @@ function ClientDetailPage() {
           <Section title={t('filingPeriods')} description={t('periodsIntro')}>
             <PeriodsPanel client={client} />
           </Section>
-
-          <AdvancedSettings client={client} />
         </>
       ) : null}
     </div>
@@ -209,26 +225,41 @@ function ClientFiscalData({ client }: { client: ClientDetail }) {
 function PeriodsPanel({ client }: { client: ClientDetail }) {
   const { t } = useI18n()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
 
-  const now = useMemo(() => new Date(), [])
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  const suggested = useMemo(() => previousMonth(new Date()), [])
+  const [year, setYear] = useState(suggested.year)
+  const [month, setMonth] = useState(suggested.month)
   const [error, setError] = useState<string | null>(null)
 
   const periods = useMemo(
-    () =>
-      [...client.filingPeriods].sort(
-        (a, b) => b.year - a.year || b.month - a.month,
-      ),
+    () => sortPeriods(client.filingPeriods),
     [client.filingPeriods],
   )
+  const existing = client.filingPeriods.find(
+    (p) => p.year === year && p.month === month,
+  )
+
+  const openPeriod = (periodId: string) =>
+    navigate({
+      to: '/clients/$clientId/periods/$periodId/uploads',
+      params: { clientId: client.id, periodId },
+    })
 
   const createPeriodMutation = useMutation({
     mutationFn: () => clientsApi.createPeriod(client.id, { year, month }),
-    onSuccess: () => {
+    onSuccess: async () => {
       setError(null)
-      queryClient.invalidateQueries({ queryKey: ['client', client.id] })
-      queryClient.invalidateQueries({ queryKey: ['clients'] })
+      void queryClient.invalidateQueries({ queryKey: ['clients'] })
+      const refreshed = await queryClient.fetchQuery({
+        queryKey: ['client', client.id],
+        queryFn: () => clientsApi.get(client.id),
+        staleTime: 0,
+      })
+      const created = refreshed.filingPeriods.find(
+        (p) => p.year === year && p.month === month,
+      )
+      if (created) void openPeriod(created.id)
     },
     onError: (err) => {
       setError(err instanceof ApiError ? err.message : t('periodCreateError'))
@@ -237,39 +268,24 @@ function PeriodsPanel({ client }: { client: ClientDetail }) {
 
   const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (
-      client.filingPeriods.some((p) => p.year === year && p.month === month)
-    ) {
-      setError(t('periodExists'))
+    setError(null)
+    if (existing) {
+      void openPeriod(existing.id)
       return
     }
-    setError(null)
     createPeriodMutation.mutate()
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <form
-        className="grid gap-4 rounded-container border border-line bg-surface-raised p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] sm:items-end"
+        className="flex flex-wrap items-end gap-3"
+        aria-label={t('newPeriodLabel')}
         onSubmit={onSubmit}
       >
-        <Field id="year" label={t('periodYear')}>
-          <Input
-            id="year"
-            name="year"
-            type="number"
-            inputMode="numeric"
-            min={2000}
-            max={2100}
-            required
-            value={year}
-            onChange={(event) => setYear(Number(event.target.value))}
-          />
-        </Field>
-
-        <Field id="month" label={t('periodMonth')}>
+        <label className="flex w-44 flex-col gap-1.5 text-sm font-semibold text-ink">
+          {t('periodMonth')}
           <Select
-            id="month"
             name="month"
             value={month}
             onChange={(event) => setMonth(Number(event.target.value))}
@@ -280,27 +296,38 @@ function PeriodsPanel({ client }: { client: ClientDetail }) {
               </option>
             ))}
           </Select>
-        </Field>
-
+        </label>
+        <label className="flex w-28 flex-col gap-1.5 text-sm font-semibold text-ink">
+          {t('periodYear')}
+          <Input
+            name="year"
+            type="number"
+            inputMode="numeric"
+            min={2000}
+            max={2100}
+            required
+            value={year}
+            onChange={(event) => setYear(Number(event.target.value))}
+          />
+        </label>
         <Button
           type="submit"
-          icon={<Plus className="size-4" strokeWidth={2} />}
+          variant={existing ? 'secondary' : 'primary'}
+          icon={
+            existing ? <ArrowRight className="size-4" strokeWidth={2} /> : null
+          }
           loading={createPeriodMutation.isPending}
           loadingLabel={t('addingPeriod')}
         >
-          {t('addPeriod')}
+          {existing ? t('openExistingPeriod') : t('addPeriod')}
         </Button>
-
-        {error ? (
-          <Notice
-            variant="error"
-            className="sm:col-span-3"
-            onDismiss={() => setError(null)}
-          >
-            {error}
-          </Notice>
-        ) : null}
       </form>
+
+      {error ? (
+        <Notice variant="error" onDismiss={() => setError(null)}>
+          {error}
+        </Notice>
+      ) : null}
 
       {periods.length === 0 ? (
         <EmptyState
@@ -310,7 +337,7 @@ function PeriodsPanel({ client }: { client: ClientDetail }) {
         />
       ) : (
         <ul
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+          className="divide-y divide-line overflow-hidden rounded-container border border-line bg-surface-raised"
           aria-label={t('periodsListLabel')}
         >
           {periods.map((period, index) => (
@@ -322,209 +349,24 @@ function PeriodsPanel({ client }: { client: ClientDetail }) {
               <Link
                 to="/clients/$clientId/periods/$periodId/uploads"
                 params={{ clientId: client.id, periodId: period.id }}
-                className="group flex items-center justify-between gap-4 rounded-container border border-line bg-surface-raised px-4 py-3.5 transition duration-200 ease-out-expo hover:-translate-y-0.5 hover:border-accent"
+                className="group flex items-center justify-between gap-4 px-4 py-3 transition hover:bg-accent-soft/50"
               >
-                <span>
-                  <span className="block font-semibold text-ink transition group-hover:text-accent">
-                    {formatPeriod(period.year, period.month)}
-                  </span>
-                  <span className="block text-sm text-ink-muted">
-                    {t('periodOpen')}
-                  </span>
+                <span className="font-semibold text-ink group-hover:text-accent">
+                  {formatPeriod(period.year, period.month)}
                 </span>
-                <ArrowRight
-                  className="size-4 shrink-0 text-accent transition duration-200 group-hover:translate-x-0.5"
-                  strokeWidth={2}
-                  aria-hidden
-                />
+                <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent">
+                  {t('periodOpen')}
+                  <ArrowRight
+                    className="size-4 transition duration-200 group-hover:translate-x-0.5"
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                </span>
               </Link>
             </li>
           ))}
         </ul>
       )}
     </div>
-  )
-}
-
-function isValidJson(value: string) {
-  try {
-    JSON.parse(value)
-    return true
-  } catch {
-    return false
-  }
-}
-
-function AdvancedSettings({ client }: { client: ClientDetail }) {
-  const { t } = useI18n()
-  const queryClient = useQueryClient()
-
-  const [configName, setConfigName] = useState('Base')
-  const [prefill, setPrefill] = useState('{\n  "actividad": "SERVICIOS"\n}')
-  const [rules, setRules] = useState('{}')
-  const [fieldErrors, setFieldErrors] = useState<{
-    prefill?: string
-    rules?: string
-  }>({})
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
-
-  const createConfigMutation = useMutation({
-    mutationFn: () =>
-      clientsApi.createConfig(client.id, {
-        name: configName,
-        prefillValuesJson: prefill,
-        transformationRulesJson: rules,
-        isActive: true,
-      }),
-    onSuccess: () => {
-      setError(null)
-      setSuccess(t('configSaved'))
-      queryClient.invalidateQueries({ queryKey: ['client', client.id] })
-    },
-    onError: (err) => {
-      setSuccess(null)
-      setError(err instanceof ApiError ? err.message : t('configSaveError'))
-    },
-  })
-
-  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const errors: { prefill?: string; rules?: string } = {}
-    if (!isValidJson(prefill)) errors.prefill = t('configInvalidJson')
-    if (!isValidJson(rules)) errors.rules = t('configInvalidJson')
-    setFieldErrors(errors)
-    if (errors.prefill || errors.rules) return
-    setError(null)
-    setSuccess(null)
-    createConfigMutation.mutate()
-  }
-
-  return (
-    <details className="group rounded-container border border-line bg-surface-raised">
-      <summary className="flex cursor-pointer items-center justify-between gap-4 rounded-container px-5 py-4 transition hover:bg-accent-soft/40">
-        <span>
-          <span className="block font-semibold text-ink">
-            {t('advancedTitle')}
-          </span>
-          <span className="block text-sm text-ink-muted">
-            {t('advancedIntro')}
-          </span>
-        </span>
-        <ChevronDown
-          className="size-5 shrink-0 text-ink-muted transition duration-200 group-open:rotate-180"
-          strokeWidth={2}
-          aria-hidden
-        />
-      </summary>
-
-      <div className="grid gap-8 border-t border-line px-5 py-5 lg:grid-cols-2">
-        <form className="space-y-5" onSubmit={onSubmit}>
-          <Field id="configName" label={t('configName')}>
-            <Input
-              id="configName"
-              name="name"
-              required
-              maxLength={80}
-              value={configName}
-              onChange={(event) => setConfigName(event.target.value)}
-            />
-          </Field>
-
-          <Field
-            id="prefillValuesJson"
-            label={t('configPrefill')}
-            error={fieldErrors.prefill}
-          >
-            <Textarea
-              id="prefillValuesJson"
-              name="prefillValuesJson"
-              className="font-mono text-sm"
-              spellCheck={false}
-              invalid={Boolean(fieldErrors.prefill)}
-              aria-describedby={fieldDescribedBy(
-                'prefillValuesJson',
-                undefined,
-                fieldErrors.prefill,
-              )}
-              value={prefill}
-              onChange={(event) => setPrefill(event.target.value)}
-            />
-          </Field>
-
-          <Field
-            id="transformationRulesJson"
-            label={t('configRules')}
-            error={fieldErrors.rules}
-          >
-            <Textarea
-              id="transformationRulesJson"
-              name="transformationRulesJson"
-              className="font-mono text-sm"
-              spellCheck={false}
-              invalid={Boolean(fieldErrors.rules)}
-              aria-describedby={fieldDescribedBy(
-                'transformationRulesJson',
-                undefined,
-                fieldErrors.rules,
-              )}
-              value={rules}
-              onChange={(event) => setRules(event.target.value)}
-            />
-          </Field>
-
-          {error ? (
-            <Notice variant="error" onDismiss={() => setError(null)}>
-              {error}
-            </Notice>
-          ) : null}
-          {success ? (
-            <Notice variant="success" onDismiss={() => setSuccess(null)}>
-              {success}
-            </Notice>
-          ) : null}
-
-          <Button
-            type="submit"
-            variant="secondary"
-            loading={createConfigMutation.isPending}
-            loadingLabel={t('savingConfig')}
-          >
-            {t('saveConfig')}
-          </Button>
-        </form>
-
-        <div>
-          {client.configurations.length === 0 ? (
-            <p className="text-sm text-ink-muted">{t('configsEmpty')}</p>
-          ) : (
-            <ul className="divide-y divide-line">
-              {client.configurations.map((config) => (
-                <li
-                  key={config.id}
-                  className="flex items-start justify-between gap-4 py-3 first:pt-0"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-ink">
-                      {config.name}
-                    </p>
-                    <p className="text-sm text-ink-muted">
-                      {t('configUpdated', {
-                        date: formatDateTime(config.updatedAtUtc),
-                      })}
-                    </p>
-                  </div>
-                  {config.isActive ? (
-                    <span className="inline-flex h-7 shrink-0 items-center rounded-full bg-success-soft px-2.5 text-xs font-semibold text-success">
-                      {t('configActive')}
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-    </details>
   )
 }

@@ -1,4 +1,4 @@
-# HaciendaCSV
+# AnexosFácil
 
 App contable (español-first) para contadores de El Salvador: lee los PDF de DTE de un cliente y genera
 los CSV de los anexos de ventas del F-07 (Anexo 1 y Anexo 2).

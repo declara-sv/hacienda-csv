@@ -18,13 +18,14 @@ type ClientFormProps = {
   onSaved: (client: ClientDetail) => void
 }
 
-type FormState = Record<keyof ClientPayload, string>
+// taxId is not edited: the API keeps it as the list label, filled from the NIT.
+type FormState = Record<Exclude<keyof ClientPayload, 'taxId'>, string>
 
 const toState = (client?: ClientDetail): FormState => ({
   name: client?.name ?? '',
-  taxId: client?.taxId ?? '',
   notes: client?.notes ?? '',
-  nit: client?.nit ?? '',
+  // Clients created before NIT existed only had the free-form identification.
+  nit: client?.nit ?? client?.taxId ?? '',
   nrc: client?.nrc ?? '',
   defaultTipoOperacion: client?.defaultTipoOperacion ?? '',
   defaultTipoIngreso: client?.defaultTipoIngreso ?? '',
@@ -35,7 +36,7 @@ const orNull = (value: string) => value.trim() || null
 export function toClientPayload(state: FormState): ClientPayload {
   return {
     name: state.name.trim(),
-    taxId: state.taxId.trim(),
+    taxId: state.nit.trim(),
     notes: orNull(state.notes),
     nit: orNull(state.nit),
     nrc: orNull(state.nrc),
@@ -102,7 +103,7 @@ export function ClientForm({
         saveMutation.mutate()
       }}
     >
-      <Field id={id('name')} label={t('clientName')}>
+      <Field id={id('name')} label={t('clientName')} className="md:col-span-2">
         <Input
           id={id('name')}
           name="name"
@@ -115,27 +116,12 @@ export function ClientForm({
         />
       </Field>
 
-      <Field
-        id={id('taxId')}
-        label={t('clientTaxId')}
-        hint={t('clientTaxIdHint')}
-      >
-        <Input
-          id={id('taxId')}
-          name="taxId"
-          required
-          maxLength={32}
-          aria-describedby={fieldDescribedBy(id('taxId'), t('clientTaxIdHint'))}
-          value={state.taxId}
-          onChange={(event) => set('taxId')(event.target.value)}
-        />
-      </Field>
-
       <Field id={id('nit')} label={t('clientNit')} hint={t('clientNitHint')}>
         <Input
           id={id('nit')}
           name="nit"
           inputMode="numeric"
+          required
           maxLength={20}
           aria-describedby={fieldDescribedBy(id('nit'), t('clientNitHint'))}
           value={state.nit}
